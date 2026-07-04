@@ -18,6 +18,7 @@
   <!-- ===== TODAY (actual vs scheduled) ===== -->
   <section id="view-today" class="view">
     <div id="today-date" class="today-date"></div>
+    <div id="today-banner" class="today-banner" hidden></div>
     <div id="today-list" class="today-list"></div>
   </section>
 
@@ -40,10 +41,21 @@
       <button id="add-schedule-btn" class="secondary-btn">+ Add scheduled item</button>
       <button id="reset-schedule-btn" class="secondary-btn danger">Reset to default</button>
     </div>
+
+    <div class="reminder-box">
+      <h2>Get iPhone reminders</h2>
+      <p class="hint">Add these times to your iPhone Calendar and your phone will remind you at each one — even when this app is closed. Tap the button, then choose <b>Add All</b> when your phone asks.</p>
+      <button class="primary-btn calendar-btn">📅 Add my schedule to iPhone Calendar</button>
+      <p class="hint">Changed your schedule? Tap it again to add the updated times.</p>
+    </div>
   </section>
 
   <!-- ===== SETTINGS / BACKUP ===== -->
   <section id="view-settings" class="view" hidden>
+    <h2>Reminders</h2>
+    <p class="hint">Let your iPhone remind you of each scheduled time (works even when this app is closed).</p>
+    <button class="secondary-btn calendar-btn">📅 Add my schedule to iPhone Calendar</button>
+
     <h2>Backup</h2>
     <p class="hint">Your data lives only on this phone. Export a copy now and then, and keep it safe (email or AirDrop it to yourself).</p>
     <button id="export-btn" class="primary-btn">Export a backup file</button>
@@ -68,7 +80,7 @@
       <li><b>Today</b> — your plan for today. As you do each thing, tap <b>Log</b> next to it and it records the time (and shows if you were early, on time, or late).</li>
       <li><b>＋ Log</b> — tap here anytime to quickly record anything: water, a supplement, a patch, an oil, lotion, or your weight. The time fills in automatically, but you can change it.</li>
       <li><b>History</b> — everything you've logged, newest first. Tap any item to fix the time, add a note, or delete it.</li>
-      <li><b>Schedule</b> — your daily plan. You can change any time or wording whenever your routine changes.</li>
+      <li><b>Schedule</b> — your daily plan. You can change any time or wording whenever your routine changes — and add these times to your iPhone Calendar so your phone reminds you.</li>
       <li><b>More</b> — save a backup of your information, and app info.</li>
     </ul>
     <p class="welcome-note">Everything you enter is saved privately on this phone. 💛</p>

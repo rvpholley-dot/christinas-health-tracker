@@ -169,3 +169,24 @@ dialog h2 { margin: 0 0 14px; }
 .tab-log { color: var(--green); font-weight: 700; font-size: 13px; }
 
 .empty { color: var(--muted); text-align: center; padding: 30px 10px; }
+
+/* ---------- today nudge banner ---------- */
+.today-banner {
+  border-radius: 12px; padding: 11px 14px; margin: 0 2px 12px;
+  font-size: 15px; font-weight: 600; border: 1px solid var(--border);
+}
+.today-banner.warn {
+  background: color-mix(in srgb, var(--late) 12%, transparent);
+  color: var(--late); border-color: color-mix(in srgb, var(--late) 35%, var(--border));
+}
+.today-banner.ok {
+  background: color-mix(in srgb, var(--ontime) 12%, transparent);
+  color: var(--ontime); border-color: color-mix(in srgb, var(--ontime) 30%, var(--border));
+}
+
+/* ---------- reminders box on Schedule ---------- */
+.reminder-box {
+  margin-top: 24px; padding: 16px; border: 1px solid var(--border);
+  border-radius: 14px; background: var(--card);
+}
+.reminder-box h2 { margin-top: 0; }

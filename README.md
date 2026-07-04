@@ -42,6 +42,21 @@ part only runs from a server or from the live site.)
 2. Tap the **Share** button → **Add to Home Screen**.
 3. It now opens full-screen like a normal app.
 
+## Reminders (via the iPhone's own Calendar)
+
+Because a home-screen web app can't reliably send its own push notifications on
+iPhone (Apple requires a server for that, which this app deliberately doesn't
+have), reminders work by handing the schedule to the phone's Calendar:
+
+- On the **Schedule** screen (or **More**), tap **"📅 Add my schedule to iPhone
+  Calendar."** This downloads a `.ics` file; open it and choose **Add All**.
+- Each scheduled time becomes a **daily repeating event with an alarm**, so
+  **iOS itself** reminds her at each time — even when this app is closed.
+- After editing the schedule, tap the button again to add the updated times.
+
+The app also shows a gentle **"overdue" nudge** on the Today screen while it's
+open (items whose scheduled time has passed but aren't logged yet).
+
 ## Backing up (important)
 
 Data lives only on the phone, so a lost or wiped phone loses it. In the app go to

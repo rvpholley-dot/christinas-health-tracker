@@ -285,6 +285,7 @@ document.getElementById("entry-delete").addEventListener("click", () => {
    ============================================================ */
 function renderToday() {
   const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
   document.getElementById("today-date").textContent = fmtDateLong(now);
 
   const schedule = getSchedule().slice().sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
@@ -294,6 +295,7 @@ function renderToday() {
 
   const list = document.getElementById("today-list");
   list.innerHTML = "";
+  let overdueCount = 0;
 
   // Scheduled items
   schedule.forEach(s => {
@@ -328,6 +330,14 @@ function renderToday() {
       pill.addEventListener("click", () => openEntryDialog({ category: done.category, entry: done }));
       card.appendChild(pill);
     } else {
+      // Not logged yet — flag it if its scheduled time has already passed.
+      if (timeToMinutes(s.time) < nowMins) {
+        overdueCount++;
+        const od = document.createElement("span");
+        od.className = "pill late";
+        od.textContent = "overdue";
+        card.appendChild(od);
+      }
       const btn = document.createElement("button");
       btn.className = "log-btn";
       btn.textContent = "Log";
@@ -337,6 +347,20 @@ function renderToday() {
     }
     list.appendChild(card);
   });
+
+  // Gentle nudge banner at the top of Today.
+  const banner = document.getElementById("today-banner");
+  if (overdueCount > 0) {
+    banner.hidden = false;
+    banner.className = "today-banner warn";
+    banner.textContent = `⏰ ${overdueCount} ${overdueCount === 1 ? "thing looks" : "things look"} overdue — tap Log when you've done it.`;
+  } else if (schedule.length) {
+    banner.hidden = false;
+    banner.className = "today-banner ok";
+    banner.textContent = "✓ You're all caught up. 💛";
+  } else {
+    banner.hidden = true;
+  }
 
   // Ad hoc (not tied to a schedule item)
   const adhoc = todaysEntries.filter(e => !e.scheduleId)
@@ -545,7 +569,81 @@ function refreshCurrentView() {
 }
 
 /* ============================================================
-   12. WELCOME / how-to popup (shows on open until dismissed)
+   12. CALENDAR REMINDERS — export the schedule as an .ics file.
+   Each scheduled item becomes a daily repeating calendar event with
+   an alarm, so the iPhone itself reminds her (even when this app is
+   closed). No server needed — the phone's Calendar does the alerting.
+   ============================================================ */
+function icsEscape(s) {
+  return String(s)
+    .replace(/\\/g, "\\\\").replace(/;/g, "\\;")
+    .replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+}
+// Fold long lines to <=75 octets per RFC 5545 (CRLF + leading space).
+function icsFold(line) {
+  const out = [];
+  let s = line;
+  while (s.length > 73) { out.push(s.slice(0, 73)); s = " " + s.slice(73); }
+  out.push(s);
+  return out.join("\r\n");
+}
+function icsStampUTC(d) {
+  return d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) +
+    "T" + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + "Z";
+}
+
+function buildIcs() {
+  const schedule = getSchedule().slice().sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  const now = new Date();
+  const dateBase = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  const stamp = icsStampUTC(now);
+
+  const lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0",
+    "PRODID:-//Christinas Health Tracker//EN",
+    "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "X-WR-CALNAME:Health Schedule",
+  ];
+  schedule.forEach((s, i) => {
+    const [h, m] = s.time.split(":");
+    // Floating local time (no Z / no TZID) => fires at this wall-clock time.
+    const dtstart = `${dateBase}T${h}${m}00`;
+    const uid = `cht-${s.id}-${i}@christinas-health-tracker`;
+    lines.push("BEGIN:VEVENT");
+    lines.push(icsFold("UID:" + uid));
+    lines.push("DTSTAMP:" + stamp);
+    lines.push(icsFold("DTSTART:" + dtstart));
+    lines.push("DURATION:PT10M");
+    lines.push("RRULE:FREQ=DAILY");
+    lines.push(icsFold("SUMMARY:" + icsEscape(s.label)));
+    if (s.note) lines.push(icsFold("DESCRIPTION:" + icsEscape(s.note)));
+    lines.push("BEGIN:VALARM");
+    lines.push("ACTION:DISPLAY");
+    lines.push(icsFold("DESCRIPTION:" + icsEscape(s.label)));
+    lines.push("TRIGGER:-PT0M"); // alert at the scheduled time
+    lines.push("END:VALARM");
+    lines.push("END:VEVENT");
+  });
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+
+function exportIcs() {
+  const blob = new Blob([buildIcs()], { type: "text/calendar" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "christina-schedule.ics";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+document.querySelectorAll(".calendar-btn").forEach(b => b.addEventListener("click", exportIcs));
+
+/* ============================================================
+   13. WELCOME / how-to popup (shows on open until dismissed)
    ============================================================ */
 const welcomeDialog = document.getElementById("welcome-dialog");
 const WELCOME_KEY = "cht.welcomeSeen";
