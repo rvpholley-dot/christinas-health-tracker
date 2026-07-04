@@ -544,6 +544,30 @@ function refreshCurrentView() {
   show(active ? active.dataset.view : "today");
 }
 
+/* ============================================================
+   12. WELCOME / how-to popup (shows on open until dismissed)
+   ============================================================ */
+const welcomeDialog = document.getElementById("welcome-dialog");
+const WELCOME_KEY = "cht.welcomeSeen";
+
+function openWelcome() {
+  document.getElementById("welcome-hide").checked = false;
+  welcomeDialog.showModal();
+}
+document.getElementById("welcome-close").addEventListener("click", () => {
+  if (document.getElementById("welcome-hide").checked) {
+    try { localStorage.setItem(WELCOME_KEY, "1"); } catch (e) {}
+  }
+  welcomeDialog.close();
+});
+document.getElementById("show-welcome-btn").addEventListener("click", openWelcome);
+
+function maybeShowWelcome() {
+  let seen = null;
+  try { seen = localStorage.getItem(WELCOME_KEY); } catch (e) {}
+  if (!seen) openWelcome();
+}
+
 // Register the service worker for offline use (added in the PWA step).
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -551,5 +575,6 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// Start on Today
+// Start on Today, then greet on first open
 show("today");
+maybeShowWelcome();

@@ -52,9 +52,33 @@
       <input id="import-input" type="file" accept="application/json,.json">
     </label>
     <h2>About</h2>
+    <button id="show-welcome-btn" class="secondary-btn">Show the welcome & how-to again</button>
     <p class="hint">Christina's Health Tracker. Colon cancer · vegetarian · blood type O. For personal tracking only — not medical advice.</p>
   </section>
 </main>
+
+<!-- ===== WELCOME / HOW-TO DIALOG ===== -->
+<dialog id="welcome-dialog">
+  <div class="welcome">
+    <h2 class="welcome-hi">Hi Christina! 💛</h2>
+    <p class="welcome-love">We all love you and support you.</p>
+
+    <p class="welcome-intro">Here's your tracker. The buttons along the bottom are:</p>
+    <ul class="welcome-tabs">
+      <li><b>Today</b> — your plan for today. As you do each thing, tap <b>Log</b> next to it and it records the time (and shows if you were early, on time, or late).</li>
+      <li><b>＋ Log</b> — tap here anytime to quickly record anything: water, a supplement, a patch, an oil, lotion, or your weight. The time fills in automatically, but you can change it.</li>
+      <li><b>History</b> — everything you've logged, newest first. Tap any item to fix the time, add a note, or delete it.</li>
+      <li><b>Schedule</b> — your daily plan. You can change any time or wording whenever your routine changes.</li>
+      <li><b>More</b> — save a backup of your information, and app info.</li>
+    </ul>
+    <p class="welcome-note">Everything you enter is saved privately on this phone. 💛</p>
+
+    <label class="welcome-check">
+      <input type="checkbox" id="welcome-hide"> Don't show this again
+    </label>
+    <button id="welcome-close" class="primary-btn">Got it</button>
+  </div>
+</dialog>
 
 <!-- ===== LOG / EDIT ENTRY DIALOG ===== -->
 <dialog id="entry-dialog">

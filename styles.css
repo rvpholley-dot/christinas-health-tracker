@@ -137,6 +137,20 @@ dialog h2 { margin: 0 0 14px; }
 .dialog-buttons { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .dialog-buttons .spacer { flex: 1; }
 
+/* ---------- welcome / how-to dialog ---------- */
+.welcome { padding: 22px 20px; }
+.welcome-hi { margin: 0 0 6px; font-size: 22px; color: var(--green); }
+.welcome-love { margin: 0 0 16px; font-size: 17px; }
+.welcome-intro { margin: 0 0 8px; color: var(--muted); }
+.welcome-tabs { margin: 0 0 14px; padding-left: 18px; }
+.welcome-tabs li { margin-bottom: 9px; line-height: 1.45; }
+.welcome-note { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+.welcome-check {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 16px; margin-bottom: 16px; cursor: pointer; min-height: var(--tap);
+}
+.welcome-check input { width: 22px; height: 22px; }
+
 /* ---------- schedule editor rows ---------- */
 .sched-row { cursor: pointer; }
 .sched-row .sub { white-space: normal; }
