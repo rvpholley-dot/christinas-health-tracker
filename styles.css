@@ -1,0 +1,157 @@
+/* Christina's Health Tracker — plain CSS, no framework.
+   Goals: large tap targets, readable text, works in light & dark. */
+
+:root {
+  --green: #2f6f4f;
+  --green-dark: #245c40;
+  --bg: #f5f6f4;
+  --card: #ffffff;
+  --text: #1c1e1b;
+  --muted: #64695f;
+  --border: #d9ddd4;
+  --danger: #b3261e;
+  --early: #b8860b;   /* logged before scheduled */
+  --late: #b3261e;    /* logged after scheduled  */
+  --ontime: #2f6f4f;
+  --tap: 48px;        /* minimum tap target */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171a;
+    --card: #1e2226;
+    --text: #eef0ec;
+    --muted: #a4aa9e;
+    --border: #333a33;
+    --green: #4c9a72;
+    --green-dark: #3d7e5c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  /* leave room for fixed header + tabbar, respecting iPhone safe areas */
+  padding: calc(56px + env(safe-area-inset-top)) 0 calc(64px + env(safe-area-inset-bottom));
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------- header ---------- */
+.app-header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+  background: var(--green); color: #fff;
+  padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  height: calc(56px + env(safe-area-inset-top));
+}
+.app-header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+
+/* ---------- views ---------- */
+#main { padding: 12px 14px; max-width: 640px; margin: 0 auto; }
+.view { animation: fade .15s ease; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.hint { color: var(--muted); font-size: 15px; margin: 4px 2px 14px; }
+h2 { font-size: 17px; margin: 22px 2px 8px; }
+
+/* ---------- quick-log category buttons ---------- */
+.category-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cat-btn {
+  min-height: 84px;
+  border: 1px solid var(--border); border-radius: 16px;
+  background: var(--card); color: var(--text);
+  font-size: 18px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.cat-btn:active { background: var(--bg); }
+
+/* ---------- today ---------- */
+.today-date { color: var(--muted); font-size: 15px; margin: 2px 2px 12px; }
+.today-list, .history-list, .schedule-list { display: flex; flex-direction: column; gap: 10px; }
+
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.card .main { flex: 1; min-width: 0; }
+.card .title { font-weight: 600; }
+.card .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.card .notes { color: var(--muted); font-size: 14px; margin-top: 4px; font-style: italic; }
+
+.sched-time { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 74px; }
+
+/* status pills on the Today screen */
+.pill { font-size: 13px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.done   { background: color-mix(in srgb, var(--ontime) 16%, transparent); color: var(--ontime); }
+.pill.early  { background: color-mix(in srgb, var(--early) 18%, transparent);  color: var(--early); }
+.pill.late   { background: color-mix(in srgb, var(--late) 15%, transparent);   color: var(--late); }
+.pill.todo   { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+
+.log-btn {
+  border: none; background: var(--green); color: #fff;
+  border-radius: 10px; padding: 10px 14px; font-size: 15px; font-weight: 600;
+  min-height: var(--tap); cursor: pointer;
+}
+.log-btn:active { background: var(--green-dark); }
+
+.adhoc-heading { color: var(--muted); font-size: 14px; margin: 18px 2px 4px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* ---------- buttons ---------- */
+.primary-btn {
+  background: var(--green); color: #fff; border: none;
+  border-radius: 12px; padding: 14px 18px; font-size: 17px; font-weight: 600;
+  min-height: var(--tap); cursor: pointer; width: 100%;
+}
+.primary-btn:active { background: var(--green-dark); }
+.secondary-btn {
+  background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 16px; font-size: 16px; min-height: var(--tap); cursor: pointer;
+}
+.secondary-btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+.row-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+
+.import-label {
+  display: block; margin-top: 12px; color: var(--muted); font-size: 15px;
+}
+.import-label input { display: block; margin-top: 6px; }
+
+/* ---------- dialogs ---------- */
+dialog {
+  border: none; border-radius: 18px; padding: 0; width: min(92vw, 460px);
+  background: var(--card); color: var(--text);
+}
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog form { padding: 18px; }
+dialog h2 { margin: 0 0 14px; }
+.field { display: block; margin-bottom: 14px; font-size: 14px; color: var(--muted); }
+.field select, .field input, .field textarea {
+  display: block; width: 100%; margin-top: 5px;
+  font-size: 17px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-height: var(--tap);
+}
+.field textarea { min-height: 60px; resize: vertical; font-family: inherit; }
+.dialog-buttons { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.dialog-buttons .spacer { flex: 1; }
+
+/* ---------- schedule editor rows ---------- */
+.sched-row { cursor: pointer; }
+.sched-row .sub { white-space: normal; }
+
+/* ---------- bottom tab bar ---------- */
+.tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+  display: flex; background: var(--card); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1; border: none; background: none; color: var(--muted);
+  font-size: 12px; padding: 8px 2px 6px; min-height: 52px; cursor: pointer;
+}
+.tab.active { color: var(--green); font-weight: 700; }
+.tab-log { color: var(--green); font-weight: 700; font-size: 13px; }
+
+.empty { color: var(--muted); text-align: center; padding: 30px 10px; }
