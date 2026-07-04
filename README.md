@@ -73,5 +73,8 @@ yourself. To restore, use **More → Restore from a backup file**.
   `cht-v1` → `cht-v2`) so installed phones pick up the new version.
 - The logging categories and items live in the `CATALOG` object at the top of
   `app.js`. The default schedule is `DEFAULT_SCHEDULE` just below it.
+- Christina can also add her own items on the fly: in any logging dialog, the
+  item dropdown ends with **"➕ Add a new one…"**. Names she adds are saved per
+  category under the `cht.customItems` localStorage key and reappear next time.
 
 _Personal tracking tool — not medical advice._

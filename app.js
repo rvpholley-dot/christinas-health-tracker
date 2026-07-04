@@ -116,6 +116,20 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+// Custom items she adds herself (e.g. a supplement not in the built-in list),
+// kept per-category: { supplements: ["...", ...], oils: [...], ... }
+const ADD_NEW = "__add_new__";
+function getCustomItems() { return load("cht.customItems", {}); }
+function addCustomItem(cat, name) {
+  const all = getCustomItems();
+  const list = all[cat] || (all[cat] = []);
+  const lc = name.toLowerCase();
+  const inCatalog = ((CATALOG[cat] && CATALOG[cat].items) || [])
+    .some(it => (typeof it === "string" ? it : it.name).toLowerCase() === lc);
+  const inCustom = list.some(n => n.toLowerCase() === lc);
+  if (!inCatalog && !inCustom) { list.push(name); save("cht.customItems", all); }
+}
+
 /* ============================================================
    3. DATE / TIME helpers
    ============================================================ */
@@ -207,15 +221,29 @@ function openEntryDialog(opts) {
   } else {
     itemField.hidden = false;
     itemSel.innerHTML = "";
-    conf.items.forEach(it => {
+    const added = [];
+    const addOption = (value, label) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      itemSel.appendChild(o);
+      added.push(value);
+    };
+    (conf.items || []).forEach(it => {
       const name = typeof it === "string" ? it : it.name;
       const dose = typeof it === "string" ? "" : it.dose;
-      const o = document.createElement("option");
-      o.value = name;
-      o.textContent = dose ? `${name} — ${dose}` : name;
-      itemSel.appendChild(o);
+      addOption(name, dose ? `${name} — ${dose}` : name);
     });
+    // her own added items for this category
+    (getCustomItems()[cat] || []).forEach(name => { if (!added.includes(name)) addOption(name, name); });
+    // make sure the entry being edited is selectable even if it's a one-off
     const preset = opts.presetItem || (entry && entry.item);
+    if (preset && !added.includes(preset)) addOption(preset, preset);
+    // the "add a new one" choice, always last
+    addOption(ADD_NEW, "➕ Add a new one…");
+
+    toggleField("field-newitem", false);
+    document.getElementById("f-newitem").value = "";
     if (preset) itemSel.value = preset;
   }
 
@@ -241,10 +269,22 @@ document.getElementById("entry-form").addEventListener("submit", (e) => {
   const conf = CATALOG[dialogCategory];
   const entries = getEntries();
 
+  // Resolve the item, handling the "➕ Add a new one…" choice.
+  let itemValue = "Weight";
+  if (!conf.numeric) {
+    itemValue = document.getElementById("f-item").value;
+    if (itemValue === ADD_NEW) {
+      const newName = document.getElementById("f-newitem").value.trim();
+      if (!newName) { alert("Type a name for the new item, or pick one from the list."); return; }
+      itemValue = newName;
+      addCustomItem(dialogCategory, newName);
+    }
+  }
+
   const record = {
     id: editingId || uid(),
     category: dialogCategory,
-    item: conf.numeric ? "Weight" : document.getElementById("f-item").value,
+    item: itemValue,
     timestamp: document.getElementById("f-time").value,
     amount: null,
     location: conf.location ? (document.getElementById("f-location").value.trim() || null) : null,
@@ -269,6 +309,14 @@ document.getElementById("entry-form").addEventListener("submit", (e) => {
   setEntries(entries);
   entryDialog.close();
   refreshCurrentView();
+});
+
+// Show the "new name" text box only when "➕ Add a new one…" is chosen.
+const itemSelEl = document.getElementById("f-item");
+itemSelEl.addEventListener("change", () => {
+  const isNew = itemSelEl.value === ADD_NEW;
+  toggleField("field-newitem", isNew);
+  if (isNew) { try { document.getElementById("f-newitem").focus(); } catch (e) {} }
 });
 
 document.getElementById("entry-cancel").addEventListener("click", () => entryDialog.close());
