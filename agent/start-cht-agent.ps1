@@ -27,6 +27,13 @@ Set-Location $agentDir
 
 # Restart forever: a crash must not leave Christina without reminders.
 while ($true) {
+    # Single-instance guard: clear any orphaned cht_agent.py first. Task
+    # Scheduler's Stop kills only this launcher, leaving python holding
+    # port 8765 — without this, a restarted task crash-loops on the bind.
+    Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+        Where-Object { $_.CommandLine -match 'cht_agent\.py' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
     & $python "$agentDir\cht_agent.py"
     Add-Content -Path "D:\Christina\cht-agent\agent.log" -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ERROR launcher: cht_agent.py exited (code $LASTEXITCODE); restarting in 15s"
     Start-Sleep -Seconds 15
