@@ -1,0 +1,14 @@
+{
+  "anthropic_api_key": "sk-ant-...",
+  "telegram_bot_token": "",
+  "elevenlabs_api_key": "",
+  "allowed_chat_ids": [],
+  "christina_chat_id": null,
+  "app_shared_secret": "generate with: python -c \"import secrets;print(secrets.token_urlsafe(24))\"",
+  "db_path": "D:\\Christina\\health-log.db",
+  "markdown_dir": "D:\\Christina\\health-log",
+  "profile_path": "D:\\Christina\\cht-agent\\christina.md",
+  "log_path": "D:\\Christina\\cht-agent\\agent.log",
+  "http_host": "127.0.0.1",
+  "http_port": 8765
+}
