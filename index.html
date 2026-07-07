@@ -15,17 +15,11 @@
 </header>
 
 <main id="main">
-  <!-- ===== TODAY (actual vs scheduled) ===== -->
+  <!-- ===== TODAY (one tappable bar per item) ===== -->
   <section id="view-today" class="view">
     <div id="today-date" class="today-date"></div>
-    <div id="today-banner" class="today-banner" hidden></div>
+    <div id="today-progress" class="progress-line" hidden></div>
     <div id="today-list" class="today-list"></div>
-  </section>
-
-  <!-- ===== QUICK LOG (category buttons) ===== -->
-  <section id="view-log" class="view" hidden>
-    <p class="hint">Tap what you just did. You can change the time before saving.</p>
-    <div id="category-buttons" class="category-buttons"></div>
   </section>
 
   <!-- ===== HISTORY ===== -->
@@ -35,7 +29,7 @@
 
   <!-- ===== SCHEDULE (editable) ===== -->
   <section id="view-schedule" class="view" hidden>
-    <p class="hint">This is the plan the Today screen compares against. Adjust times or wording anytime.</p>
+    <p class="hint">These become the tappable bars on the Today screen. Adjust times or items anytime.</p>
     <div id="schedule-list" class="schedule-list"></div>
     <div class="row-buttons">
       <button id="add-schedule-btn" class="secondary-btn">+ Add scheduled item</button>
@@ -77,13 +71,12 @@
 
     <p class="welcome-intro">Here's your tracker. The buttons along the bottom are:</p>
     <ul class="welcome-tabs">
-      <li><b>Today</b> — your plan for today. As you do each thing, tap <b>Log</b> next to it and it records the time (and shows if you were early, on time, or late).</li>
-      <li><b>＋ Log</b> — tap here anytime to quickly record anything: water, a supplement, a patch, an oil, lotion, or your weight. The time fills in automatically, but you can change it.</li>
-      <li><b>History</b> — everything you've logged, newest first. Tap any item to fix the time, add a note, or delete it.</li>
-      <li><b>Schedule</b> — your daily plan. You can change any time or wording whenever your routine changes — and add these times to your iPhone Calendar so your phone reminds you.</li>
+      <li><b>Today</b> — everything for today, in time order. When you've done something, tap its bar — it gets a big green ✓ with the time. Tapped by mistake, or did it earlier? Tap the ✓ to fix the time or un-check it. Patches and Oils let you pick everything you applied at once.</li>
+      <li><b>History</b> — everything you've logged, newest first. Tap any item to fix its time.</li>
+      <li><b>Schedule</b> — your daily plan. Change any time or item whenever your routine changes — and add these times to your iPhone Calendar so your phone reminds you.</li>
       <li><b>More</b> — save a backup of your information, and app info.</li>
     </ul>
-    <p class="welcome-note">Everything you enter is saved privately on this phone. 💛</p>
+    <p class="welcome-note">Something extra, not on the plan? Use <b>＋ Log something else</b> at the bottom of Today. Everything you enter is saved privately on this phone. 💛</p>
 
     <label class="welcome-check">
       <input type="checkbox" id="welcome-hide"> Don't show this again
@@ -92,44 +85,51 @@
   </div>
 </dialog>
 
-<!-- ===== LOG / EDIT ENTRY DIALOG ===== -->
-<dialog id="entry-dialog">
-  <form id="entry-form" method="dialog">
-    <h2 id="entry-dialog-title">Log</h2>
+<!-- ===== PICKER DIALOG (multi-select for group bars + "Log something else") ===== -->
+<dialog id="picker-dialog">
+  <form id="picker-form" method="dialog">
+    <h2 id="picker-title">Log</h2>
 
-    <label class="field">Item
-      <select id="f-item"></select>
+    <div id="picker-cats" class="picker-cats" hidden></div>
+
+    <div id="picker-items" class="picker-items"></div>
+
+    <label class="field" id="picker-newitem-field" hidden>Add one not on the list (optional)
+      <input id="picker-newitem" type="text" autocapitalize="words" placeholder="Type its name">
     </label>
 
-    <label class="field" id="field-newitem" hidden>New name
-      <input id="f-newitem" type="text" autocapitalize="words" placeholder="Type the new one's name">
-    </label>
-
-    <label class="field" id="field-amount" hidden>Amount (oz)
-      <input id="f-amount" type="number" inputmode="decimal" min="0" step="1" placeholder="e.g. 8">
-    </label>
-
-    <label class="field" id="field-weight" hidden>Weight
-      <input id="f-weight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="e.g. 142">
-    </label>
-
-    <label class="field" id="field-location" hidden>Location (optional)
-      <input id="f-location" type="text" placeholder="e.g. left shoulder">
-    </label>
-
-    <label class="field">Time
-      <input id="f-time" type="datetime-local" required>
-    </label>
-
-    <label class="field">Notes (optional)
-      <textarea id="f-notes" rows="2" placeholder="anything worth remembering"></textarea>
+    <label class="field" id="picker-weight-field" hidden>Weight
+      <input id="picker-weight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="e.g. 142">
     </label>
 
     <div class="dialog-buttons">
-      <button type="button" id="entry-delete" class="secondary-btn danger" hidden>Delete</button>
       <span class="spacer"></span>
-      <button type="button" id="entry-cancel" class="secondary-btn">Cancel</button>
-      <button type="submit" id="entry-save" class="primary-btn">Save</button>
+      <button type="button" id="picker-cancel" class="secondary-btn">Cancel</button>
+      <button type="submit" id="picker-done" class="primary-btn">Done ✓</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===== EDIT DIALOG (fix time / adjust items / un-check) ===== -->
+<dialog id="edit-dialog">
+  <form id="edit-form" method="dialog">
+    <h2 id="edit-title">Edit</h2>
+
+    <div id="edit-items" class="picker-items"></div>
+
+    <label class="field" id="edit-weight-field" hidden>Weight
+      <input id="edit-weight" type="number" inputmode="decimal" min="0" step="0.1">
+    </label>
+
+    <label class="field">Time
+      <input id="edit-time" type="datetime-local" required>
+    </label>
+
+    <div class="dialog-buttons">
+      <button type="button" id="edit-uncheck" class="secondary-btn danger">Un-check</button>
+      <span class="spacer"></span>
+      <button type="button" id="edit-cancel" class="secondary-btn">Cancel</button>
+      <button type="submit" class="primary-btn">Save</button>
     </div>
   </form>
 </dialog>
@@ -141,8 +141,14 @@
     <label class="field">Time
       <input id="s-time" type="time" required>
     </label>
-    <label class="field">What
-      <input id="s-label" type="text" required placeholder="e.g. Transfer Factor — 1st dose">
+    <label class="field">Category
+      <select id="s-category"></select>
+    </label>
+    <label class="field" id="s-item-field">Item
+      <select id="s-item"></select>
+    </label>
+    <label class="field" id="s-newitem-field" hidden>New name
+      <input id="s-newitem" type="text" autocapitalize="words" placeholder="Type the new one's name">
     </label>
     <label class="field">Note (optional)
       <input id="s-note" type="text" placeholder="e.g. 1 hr before food">
@@ -159,7 +165,6 @@
 <!-- ===== BOTTOM NAV ===== -->
 <nav class="tabbar">
   <button data-view="today" class="tab active">Today</button>
-  <button data-view="log" class="tab tab-log">＋ Log</button>
   <button data-view="history" class="tab">History</button>
   <button data-view="schedule" class="tab">Schedule</button>
   <button data-view="settings" class="tab">More</button>
