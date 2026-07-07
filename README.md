@@ -54,8 +54,9 @@ have), reminders work by handing the schedule to the phone's Calendar:
   **iOS itself** reminds her at each time — even when this app is closed.
 - After editing the schedule, tap the button again to add the updated times.
 
-The app also shows a gentle **"overdue" nudge** on the Today screen while it's
-open (items whose scheduled time has passed but aren't logged yet).
+The Today screen itself stays calm: no overdue warnings. Each item is a bar
+with an empty circle; tapping it logs the current time and turns it into a
+big green check mark (tap again to fix the time or un-check).
 
 ## Backing up (important)
 
@@ -73,8 +74,12 @@ yourself. To restore, use **More → Restore from a backup file**.
   `cht-v1` → `cht-v2`) so installed phones pick up the new version.
 - The logging categories and items live in the `CATALOG` object at the top of
   `app.js`. The default schedule is `DEFAULT_SCHEDULE` just below it.
-- Christina can also add her own items on the fly: in any logging dialog, the
-  item dropdown ends with **"➕ Add a new one…"**. Names she adds are saved per
-  category under the `cht.customItems` localStorage key and reappear next time.
+- Christina can also add her own items on the fly: the pickers have an
+  "add one not on the list" box, and the Schedule editor's item dropdown ends
+  with **"➕ Add a new one…"**. Names she adds are saved per category under the
+  `cht.customItems` localStorage key and reappear next time.
+- v2 (checklist redesign): entries store `items: []` (multi-select capable);
+  v1 entries with a single `item` are still displayed. `cht.version` guards a
+  one-time schedule reseed. The v1 app is preserved on the `v1-backup` branch.
 
 _Personal tracking tool — not medical advice._
