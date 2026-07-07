@@ -1,42 +1,46 @@
-/* Christina's Health Tracker — all app logic, plain vanilla JavaScript.
+/* Christina's Health Tracker v2 — all app logic, plain vanilla JavaScript.
    Data is stored on THIS device only, in the browser's localStorage.
-   No server, no accounts. See README.md for how it all fits together. */
+   No server, no accounts. See README.md for how it all fits together.
+
+   v2: the Today screen is a one-tap checklist. One bar per item; tapping a
+   bar logs it at the current time and shows a green check. Patches/Oils are
+   "group" bars that open a multi-select. There is no overdue styling — an
+   unchecked circle next to a passed time is the only signal. */
 
 "use strict";
 
 /* ============================================================
    1. CATALOG — what can be logged, grouped by category.
-   Items may be a plain string, or {name, dose} where `dose`
-   is the standing/target dosing shown as a reference hint.
+   `group: true` categories (Patches, Oils) are logged as one
+   multi-select check-off. `numeric` (Weight) asks for a number.
    ============================================================ */
 const CATALOG = {
   water: {
     label: "Water",
-    amount: true, // ask for oz
     items: ["Light water", "Alkaline water", "Bottled water", "Other water"],
   },
   supplements: {
     label: "Supplements",
     items: [
-      { name: "Cellergize (LifeWave)", dose: "stir into 8oz water each morning" },
-      { name: "Transfer Factor Plus", dose: "3×/day, 1 hr before food/drink (water ok)" },
+      { name: "Cellergize (LifeWave)", dose: "stir into 8oz water" },
+      { name: "Transfer Factor Plus", dose: "1 hr before food/drink (water ok)" },
       { name: "ImmuneAdapt (A Fu Zheng)", dose: "2 caps, 3×/day" },
       { name: "Bupleurum / Liver cleanse", dose: "1 tab, 2×/day" },
       { name: "Vitamin C", dose: "AM & PM" },
-      { name: "Essiac tea (organic)", dose: "2–3×/day, 2 hrs after meals, drink within 15 min" },
+      { name: "Essiac tea (organic)", dose: "2 hrs after meals, drink within 15 min" },
       { name: "Carcinosin 200c", dose: "2 pills, once a WEEK only" },
       { name: "Colostrum + Probiotic", dose: "" },
     ],
   },
   patches: {
     label: "Patches",
-    location: true,
+    group: true,
     items: ["X39", "X49", "Aeon", "Energy", "Alavida", "Glutathione",
             "Carnosine", "Nirvana", "IceWave", "SP6 Complete"],
   },
   oils: {
     label: "Oils",
-    location: true,
+    group: true,
     items: ["Past Tense", "Immortelle", "Frankincense", "Birch", "Balance", "Rose",
             "Deep Blue (oil)", "Deep Blue (lotion)", "Cleansing", "On Guard", "Valor",
             "Three Wise Men", "Citrus blend", "Tea tree", "Lemon", "Peppermint",
@@ -48,34 +52,39 @@ const CATALOG = {
   },
   weight: {
     label: "Weight",
-    numeric: true, // ask for a number instead of an item
+    numeric: true,
   },
 };
 
-/* Default schedule, seeded from Christina's notes (a typical day).
+/* Default schedule — ONE ITEM PER ROW (v2), seeded from Christina's notes.
    She can edit/add/remove these on the Schedule screen. */
 const DEFAULT_SCHEDULE = [
-  { time: "06:30", label: "Wake — Light water + Cellergize water; apply oils + patches", cat: "water" },
-  { time: "08:30", label: "Light water, or Immune (2) + Liver (1)", cat: "supplements" },
-  { time: "09:00", label: "Immune + Liver — 1st dose", cat: "supplements" },
-  { time: "09:30", label: "Water / light water", cat: "water" },
-  { time: "10:30", label: "Transfer Factor (3) — 1st dose", note: "1 hr before food/other drink; take with water", cat: "supplements" },
-  { time: "11:30", label: "Essiac — 1st dose", note: "2 hrs after meal; drink within 15 min", cat: "supplements" },
-  { time: "12:00", label: "1st meal + water", cat: "water" },
-  { time: "14:00", label: "Eat + Immune — 2nd dose", cat: "supplements" },
-  { time: "16:00", label: "Snack/dinner + Liver — 2nd dose", cat: "supplements" },
-  { time: "18:30", label: "Light water", cat: "water" },
-  { time: "20:00", label: "Essiac — 2nd dose", note: "2 hrs after meal", cat: "supplements" },
-  { time: "20:30", label: "Water, all around", cat: "water" },
-  { time: "21:00", label: "Transfer Factor", cat: "supplements" },
-  { time: "22:00", label: "Nighttime Cellergize + light water", note: "within 15 min", cat: "supplements" },
-  { time: "23:00", label: "If still awake, Essiac", cat: "supplements" },
+  { time: "06:30", category: "water", item: "Light water" },
+  { time: "06:30", category: "supplements", item: "Cellergize (LifeWave)", note: "stir into 8oz water" },
+  { time: "06:30", category: "patches" },
+  { time: "06:30", category: "oils" },
+  { time: "08:30", category: "water", item: "Light water" },
+  { time: "09:00", category: "supplements", item: "ImmuneAdapt (A Fu Zheng)", note: "2 caps" },
+  { time: "09:00", category: "supplements", item: "Bupleurum / Liver cleanse", note: "1 tab" },
+  { time: "09:30", category: "water", item: "Light water" },
+  { time: "10:30", category: "supplements", item: "Transfer Factor Plus", note: "1 hr before food/drink (water ok)" },
+  { time: "11:30", category: "supplements", item: "Essiac tea (organic)", note: "2 hrs after meal; drink within 15 min" },
+  { time: "12:00", category: "water", item: "Light water", note: "with 1st meal" },
+  { time: "14:00", category: "supplements", item: "ImmuneAdapt (A Fu Zheng)", note: "with food" },
+  { time: "16:00", category: "supplements", item: "Bupleurum / Liver cleanse", note: "with snack/dinner" },
+  { time: "18:30", category: "water", item: "Light water" },
+  { time: "20:00", category: "supplements", item: "Essiac tea (organic)", note: "2 hrs after meal" },
+  { time: "20:30", category: "water", item: "Light water" },
+  { time: "21:00", category: "supplements", item: "Transfer Factor Plus" },
+  { time: "22:00", category: "supplements", item: "Cellergize (LifeWave)", note: "nighttime, within 15 min" },
+  { time: "23:00", category: "supplements", item: "Essiac tea (organic)", note: "if still awake" },
 ];
 
 /* ============================================================
    2. STORAGE — tiny helpers over localStorage (JSON).
    ============================================================ */
 const KEYS = { entries: "cht.entries", schedule: "cht.schedule", version: "cht.version" };
+const APP_DATA_VERSION = 2;
 
 function load(key, fallback) {
   try {
@@ -107,18 +116,30 @@ function setSchedule(list) { save(KEYS.schedule, list); }
 
 function seedSchedule() {
   return DEFAULT_SCHEDULE.map((s, i) => ({
-    id: "sched-" + i + "-" + s.time.replace(":", ""),
-    time: s.time, label: s.label, note: s.note || "", category: s.cat || null,
+    id: "sched2-" + i + "-" + s.time.replace(":", ""),
+    time: s.time,
+    category: s.category,
+    item: s.item || null,
+    group: !!(CATALOG[s.category] && CATALOG[s.category].group),
+    note: s.note || "",
   }));
+}
+
+/* One-time v1 → v2 migration: the schedule format changed (one item per row),
+   so reseed it. Logged entries are NOT touched — History reads old and new. */
+function migrate() {
+  const v = load(KEYS.version, 1);
+  if (v < 2) {
+    setSchedule(seedSchedule());
+    save(KEYS.version, APP_DATA_VERSION);
+  }
 }
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-// Custom items she adds herself (e.g. a supplement not in the built-in list),
-// kept per-category: { supplements: ["...", ...], oils: [...], ... }
-const ADD_NEW = "__add_new__";
+// Custom items she adds herself, kept per-category: { supplements: [...], ... }
 function getCustomItems() { return load("cht.customItems", {}); }
 function addCustomItem(cat, name) {
   const all = getCustomItems();
@@ -128,6 +149,15 @@ function addCustomItem(cat, name) {
     .some(it => (typeof it === "string" ? it : it.name).toLowerCase() === lc);
   const inCustom = list.some(n => n.toLowerCase() === lc);
   if (!inCatalog && !inCustom) { list.push(name); save("cht.customItems", all); }
+}
+// catalog + custom item names for a category, as [{name, dose}]
+function itemsFor(cat) {
+  const out = ((CATALOG[cat] && CATALOG[cat].items) || [])
+    .map(it => typeof it === "string" ? { name: it, dose: "" } : { name: it.name, dose: it.dose || "" });
+  (getCustomItems()[cat] || []).forEach(name => {
+    if (!out.some(o => o.name === name)) out.push({ name, dose: "" });
+  });
+  return out;
 }
 
 /* ============================================================
@@ -157,12 +187,32 @@ function fmtDateLong(date) {
 }
 // "HH:MM" -> minutes since midnight
 function timeToMinutes(t) { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
+function to12h(t) {
+  const [h, m] = t.split(":").map(Number);
+  const ap = h < 12 ? "AM" : "PM";
+  return `${h % 12 || 12}:${pad(m)} ${ap}`;
+}
 
 /* ============================================================
-   4. VIEW ROUTING
+   4. ENTRY helpers — one place that understands v1 AND v2 shapes
    ============================================================ */
-const VIEWS = ["today", "log", "history", "schedule", "settings"];
-const TITLES = { today: "Today", log: "Log", history: "History", schedule: "Schedule", settings: "More" };
+// entry -> array of item names (v2 has .items, v1 had .item)
+function entryItems(e) {
+  if (Array.isArray(e.items)) return e.items;
+  return e.item ? [e.item] : [];
+}
+// display title for a schedule row
+function rowTitle(s) {
+  if (s.group) return CATALOG[s.category] ? CATALOG[s.category].label : s.category;
+  return s.item || (s.label /* v1 leftover rows, just in case */) ||
+         (CATALOG[s.category] ? CATALOG[s.category].label : s.category);
+}
+
+/* ============================================================
+   5. VIEW ROUTING
+   ============================================================ */
+const VIEWS = ["today", "history", "schedule", "settings"];
+const TITLES = { today: "Today", history: "History", schedule: "Schedule", settings: "More" };
 
 function show(view) {
   VIEWS.forEach(v => { document.getElementById("view-" + v).hidden = (v !== view); });
@@ -170,7 +220,6 @@ function show(view) {
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.view === view));
   if (view === "today") renderToday();
-  if (view === "log") renderCategoryButtons();
   if (view === "history") renderHistory();
   if (view === "schedule") renderSchedule();
 }
@@ -178,162 +227,16 @@ function show(view) {
 document.querySelectorAll(".tab").forEach(tab =>
   tab.addEventListener("click", () => show(tab.dataset.view)));
 
-/* ============================================================
-   5. QUICK LOG — category buttons
-   ============================================================ */
-function renderCategoryButtons() {
-  const wrap = document.getElementById("category-buttons");
-  wrap.innerHTML = "";
-  Object.keys(CATALOG).forEach(cat => {
-    const btn = document.createElement("button");
-    btn.className = "cat-btn";
-    btn.textContent = CATALOG[cat].label;
-    btn.addEventListener("click", () => openEntryDialog({ category: cat }));
-    wrap.appendChild(btn);
-  });
+function refreshCurrentView() {
+  const active = document.querySelector(".tab.active");
+  show(active ? active.dataset.view : "today");
 }
 
 /* ============================================================
-   6. ENTRY DIALOG — create / edit / delete a logged (actual) entry
-   ============================================================ */
-const entryDialog = document.getElementById("entry-dialog");
-let editingId = null;      // entry id when editing, else null
-let dialogCategory = null; // current category in the dialog
-let dialogScheduleId = null;
-
-function openEntryDialog(opts) {
-  // opts: {category, entry?, scheduleId?, presetItem?}
-  const cat = opts.category;
-  dialogCategory = cat;
-  const conf = CATALOG[cat];
-  const entry = opts.entry || null;
-  editingId = entry ? entry.id : null;
-  dialogScheduleId = opts.scheduleId || (entry && entry.scheduleId) || null;
-
-  document.getElementById("entry-dialog-title").textContent =
-    (entry ? "Edit — " : "Log — ") + conf.label;
-
-  // Item picker (hidden for weight)
-  const itemSel = document.getElementById("f-item");
-  const itemField = itemSel.closest(".field");
-  if (conf.numeric) {
-    itemField.hidden = true;
-  } else {
-    itemField.hidden = false;
-    itemSel.innerHTML = "";
-    const added = [];
-    const addOption = (value, label) => {
-      const o = document.createElement("option");
-      o.value = value;
-      o.textContent = label;
-      itemSel.appendChild(o);
-      added.push(value);
-    };
-    (conf.items || []).forEach(it => {
-      const name = typeof it === "string" ? it : it.name;
-      const dose = typeof it === "string" ? "" : it.dose;
-      addOption(name, dose ? `${name} — ${dose}` : name);
-    });
-    // her own added items for this category
-    (getCustomItems()[cat] || []).forEach(name => { if (!added.includes(name)) addOption(name, name); });
-    // make sure the entry being edited is selectable even if it's a one-off
-    const preset = opts.presetItem || (entry && entry.item);
-    if (preset && !added.includes(preset)) addOption(preset, preset);
-    // the "add a new one" choice, always last
-    addOption(ADD_NEW, "➕ Add a new one…");
-
-    toggleField("field-newitem", false);
-    document.getElementById("f-newitem").value = "";
-    if (preset) itemSel.value = preset;
-  }
-
-  // Conditional fields
-  toggleField("field-amount", !!conf.amount);
-  toggleField("field-weight", !!conf.numeric);
-  toggleField("field-location", !!conf.location);
-
-  document.getElementById("f-amount").value = entry && entry.amount != null && conf.amount ? entry.amount : "";
-  document.getElementById("f-weight").value = entry && entry.amount != null && conf.numeric ? entry.amount : "";
-  document.getElementById("f-location").value = (entry && entry.location) || "";
-  document.getElementById("f-notes").value = (entry && entry.notes) || "";
-  document.getElementById("f-time").value = (entry && entry.timestamp) || nowLocalInput();
-
-  document.getElementById("entry-delete").hidden = !entry;
-  entryDialog.showModal();
-}
-
-function toggleField(id, on) { document.getElementById(id).hidden = !on; }
-
-document.getElementById("entry-form").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const conf = CATALOG[dialogCategory];
-  const entries = getEntries();
-
-  // Resolve the item, handling the "➕ Add a new one…" choice.
-  let itemValue = "Weight";
-  if (!conf.numeric) {
-    itemValue = document.getElementById("f-item").value;
-    if (itemValue === ADD_NEW) {
-      const newName = document.getElementById("f-newitem").value.trim();
-      if (!newName) { alert("Type a name for the new item, or pick one from the list."); return; }
-      itemValue = newName;
-      addCustomItem(dialogCategory, newName);
-    }
-  }
-
-  const record = {
-    id: editingId || uid(),
-    category: dialogCategory,
-    item: itemValue,
-    timestamp: document.getElementById("f-time").value,
-    amount: null,
-    location: conf.location ? (document.getElementById("f-location").value.trim() || null) : null,
-    notes: document.getElementById("f-notes").value.trim(),
-    scheduleId: dialogScheduleId || null,
-  };
-  if (conf.amount) {
-    const v = document.getElementById("f-amount").value;
-    record.amount = v === "" ? null : Number(v);
-  }
-  if (conf.numeric) {
-    const v = document.getElementById("f-weight").value;
-    record.amount = v === "" ? null : Number(v);
-  }
-
-  if (editingId) {
-    const i = entries.findIndex(x => x.id === editingId);
-    if (i >= 0) entries[i] = record;
-  } else {
-    entries.push(record);
-  }
-  setEntries(entries);
-  entryDialog.close();
-  refreshCurrentView();
-});
-
-// Show the "new name" text box only when "➕ Add a new one…" is chosen.
-const itemSelEl = document.getElementById("f-item");
-itemSelEl.addEventListener("change", () => {
-  const isNew = itemSelEl.value === ADD_NEW;
-  toggleField("field-newitem", isNew);
-  if (isNew) { try { document.getElementById("f-newitem").focus(); } catch (e) {} }
-});
-
-document.getElementById("entry-cancel").addEventListener("click", () => entryDialog.close());
-document.getElementById("entry-delete").addEventListener("click", () => {
-  if (!editingId) return;
-  if (!confirm("Delete this entry?")) return;
-  setEntries(getEntries().filter(x => x.id !== editingId));
-  entryDialog.close();
-  refreshCurrentView();
-});
-
-/* ============================================================
-   7. TODAY — schedule (with actual-vs-scheduled) + ad hoc entries
+   6. TODAY — the checklist
    ============================================================ */
 function renderToday() {
   const now = new Date();
-  const nowMins = now.getHours() * 60 + now.getMinutes();
   document.getElementById("today-date").textContent = fmtDateLong(now);
 
   const schedule = getSchedule().slice().sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
@@ -343,17 +246,17 @@ function renderToday() {
 
   const list = document.getElementById("today-list");
   list.innerHTML = "";
-  let overdueCount = 0;
+  let doneCount = 0;
 
-  // Scheduled items
   schedule.forEach(s => {
-    // earliest actual entry today linked to this schedule item
+    // earliest entry today linked to this bar
     const done = todaysEntries
       .filter(e => e.scheduleId === s.id)
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp))[0];
+    if (done) doneCount++;
 
     const card = document.createElement("div");
-    card.className = "card";
+    card.className = "card check-row";
 
     const time = document.createElement("div");
     time.className = "sched-time";
@@ -361,56 +264,46 @@ function renderToday() {
 
     const main = document.createElement("div");
     main.className = "main";
-    main.innerHTML = `<div class="title">${escapeHtml(s.label)}</div>` +
-      (s.note ? `<div class="sub">${escapeHtml(s.note)}</div>` : "");
+    let subBits = [];
+    if (done && s.group) subBits.push(entryItems(done).join(", "));
+    if (s.note) subBits.push(s.note);
+    main.innerHTML = `<div class="title">${escapeHtml(rowTitle(s))}</div>` +
+      (subBits.length ? `<div class="sub">${escapeHtml(subBits.join(" · "))}</div>` : "");
+
+    const wrap = document.createElement("div");
+    wrap.className = "check-wrap";
+    const check = document.createElement("div");
+    check.className = "check" + (done ? " done" : "");
+    check.textContent = "✓";
+    wrap.appendChild(check);
+    if (done) {
+      const t = document.createElement("div");
+      t.className = "check-time";
+      t.textContent = fmtTime(parseInput(done.timestamp));
+      wrap.appendChild(t);
+    }
 
     card.appendChild(time);
     card.appendChild(main);
-
-    if (done) {
-      const actual = parseInput(done.timestamp);
-      const diff = (actual.getHours() * 60 + actual.getMinutes()) - timeToMinutes(s.time);
-      const pill = document.createElement("span");
-      pill.className = "pill " + (Math.abs(diff) <= 10 ? "done" : diff < 0 ? "early" : "late");
-      pill.textContent = fmtTime(actual) + diffLabel(diff);
-      pill.title = "Tap to edit";
-      pill.style.cursor = "pointer";
-      pill.addEventListener("click", () => openEntryDialog({ category: done.category, entry: done }));
-      card.appendChild(pill);
-    } else {
-      // Not logged yet — flag it if its scheduled time has already passed.
-      if (timeToMinutes(s.time) < nowMins) {
-        overdueCount++;
-        const od = document.createElement("span");
-        od.className = "pill late";
-        od.textContent = "overdue";
-        card.appendChild(od);
-      }
-      const btn = document.createElement("button");
-      btn.className = "log-btn";
-      btn.textContent = "Log";
-      btn.addEventListener("click", () =>
-        openEntryDialog({ category: s.category || "supplements", scheduleId: s.id, presetItem: null }));
-      card.appendChild(btn);
-    }
+    card.appendChild(wrap);
+    card.addEventListener("click", () => {
+      if (done) { openEdit(done); }
+      else if (s.group) { openPicker({ category: s.category, scheduleId: s.id }); }
+      else { quickLog(s); }
+    });
     list.appendChild(card);
   });
 
-  // Gentle nudge banner at the top of Today.
-  const banner = document.getElementById("today-banner");
-  if (overdueCount > 0) {
-    banner.hidden = false;
-    banner.className = "today-banner warn";
-    banner.textContent = `⏰ ${overdueCount} ${overdueCount === 1 ? "thing looks" : "things look"} overdue — tap Log when you've done it.`;
-  } else if (schedule.length) {
-    banner.hidden = false;
-    banner.className = "today-banner ok";
-    banner.textContent = "✓ You're all caught up. 💛";
+  // progress line ("7 of 15 done") — calm, no colors, no warnings
+  const prog = document.getElementById("today-progress");
+  if (schedule.length) {
+    prog.hidden = false;
+    prog.textContent = `${doneCount} of ${schedule.length} done`;
   } else {
-    banner.hidden = true;
+    prog.hidden = true;
   }
 
-  // Ad hoc (not tied to a schedule item)
+  // ad hoc entries (logged via ＋, not tied to a bar)
   const adhoc = todaysEntries.filter(e => !e.scheduleId)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   if (adhoc.length) {
@@ -421,26 +314,202 @@ function renderToday() {
     adhoc.forEach(e => list.appendChild(entryCard(e)));
   }
 
-  if (!schedule.length && !todaysEntries.length) {
-    list.innerHTML = `<div class="empty">Nothing yet today. Tap ＋ Log to add something.</div>`;
-  }
+  // the "＋ Log something else" bar, always last
+  const addBar = document.createElement("div");
+  addBar.className = "card add-row";
+  addBar.textContent = "＋ Log something else";
+  addBar.addEventListener("click", () => openPicker({}));
+  list.appendChild(addBar);
 }
 
-function diffLabel(diff) {
-  if (Math.abs(diff) <= 10) return " · on time";
-  const sign = diff < 0 ? "−" : "+";
-  const mins = Math.abs(diff);
-  const txt = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`;
-  return ` · ${sign}${txt} ${diff < 0 ? "early" : "late"}`;
-}
-function to12h(t) {
-  const [h, m] = t.split(":").map(Number);
-  const ap = h < 12 ? "AM" : "PM";
-  return `${h % 12 || 12}:${pad(m)} ${ap}`;
+// one-tap check-off for a single-item bar
+function quickLog(s) {
+  const entries = getEntries();
+  entries.push({
+    id: uid(),
+    category: s.category,
+    items: [s.item || rowTitle(s)],
+    timestamp: nowLocalInput(),
+    amount: null,
+    scheduleId: s.id,
+  });
+  setEntries(entries);
+  renderToday();
 }
 
 /* ============================================================
-   8. HISTORY — every entry, newest first, tap to edit
+   7. PICKER — multi-select for group bars and "Log something else"
+   ============================================================ */
+const pickerDialog = document.getElementById("picker-dialog");
+let pickerState = null; // { category, scheduleId }
+
+function openPicker(opts) {
+  pickerState = { category: opts.category || null, scheduleId: opts.scheduleId || null };
+  const catsDiv = document.getElementById("picker-cats");
+  catsDiv.hidden = !!pickerState.category;
+  catsDiv.innerHTML = "";
+  if (!pickerState.category) {
+    document.getElementById("picker-title").textContent = "Log something else";
+    Object.keys(CATALOG).forEach(cat => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "cat-btn";
+      b.textContent = CATALOG[cat].label;
+      b.addEventListener("click", () => { pickerState.category = cat; renderPickerBody(); catsDiv.hidden = true; });
+      catsDiv.appendChild(b);
+    });
+    document.getElementById("picker-items").innerHTML = "";
+    document.getElementById("picker-newitem-field").hidden = true;
+    document.getElementById("picker-weight-field").hidden = true;
+  } else {
+    renderPickerBody();
+  }
+  document.getElementById("picker-newitem").value = "";
+  document.getElementById("picker-weight").value = "";
+  pickerDialog.showModal();
+}
+
+function renderPickerBody() {
+  const cat = pickerState.category;
+  const conf = CATALOG[cat];
+  document.getElementById("picker-title").textContent = "Log — " + conf.label;
+  const itemsDiv = document.getElementById("picker-items");
+  itemsDiv.innerHTML = "";
+  const isWeight = !!conf.numeric;
+  document.getElementById("picker-weight-field").hidden = !isWeight;
+  document.getElementById("picker-newitem-field").hidden = isWeight;
+  if (isWeight) return;
+  itemsFor(cat).forEach(it => {
+    itemsDiv.appendChild(pickerRow(it.name, it.dose, false));
+  });
+}
+
+// one labelled checkbox row (shared by picker and edit dialogs)
+function pickerRow(name, dose, checked) {
+  const label = document.createElement("label");
+  label.className = "picker-item";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.value = name;
+  cb.checked = checked;
+  const span = document.createElement("span");
+  span.innerHTML = escapeHtml(name) + (dose ? `<span class="dose">${escapeHtml(dose)}</span>` : "");
+  label.appendChild(cb);
+  label.appendChild(span);
+  return label;
+}
+
+document.getElementById("picker-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (!pickerState || !pickerState.category) return; // no category picked yet — stay open
+  const cat = pickerState.category;
+  const conf = CATALOG[cat];
+
+  let items = [];
+  let amount = null;
+
+  if (conf.numeric) {
+    const v = document.getElementById("picker-weight").value;
+    const n = Number(v);
+    if (v === "" || !isFinite(n) || n <= 0) { alert("Type your weight first. 💛"); return; }
+    amount = n;
+    items = ["Weight"];
+  } else {
+    items = Array.from(document.querySelectorAll("#picker-items input:checked")).map(cb => cb.value);
+    const extra = document.getElementById("picker-newitem").value.trim();
+    if (extra) { items.push(extra); addCustomItem(cat, extra); }
+    if (!items.length) return; // nothing selected — stay open, no error
+  }
+
+  const entries = getEntries();
+  entries.push({
+    id: uid(),
+    category: cat,
+    items: items,
+    timestamp: nowLocalInput(),
+    amount: amount,
+    scheduleId: pickerState.scheduleId,
+  });
+  setEntries(entries);
+  pickerDialog.close();
+  refreshCurrentView();
+});
+
+document.getElementById("picker-cancel").addEventListener("click", () => pickerDialog.close());
+
+/* ============================================================
+   8. EDIT — fix the time, adjust group items, or un-check
+   ============================================================ */
+const editDialog = document.getElementById("edit-dialog");
+let editingEntryId = null;
+
+function openEdit(entry) {
+  editingEntryId = entry.id;
+  const conf = CATALOG[entry.category] || {};
+  document.getElementById("edit-title").textContent =
+    "Edit — " + (conf.label || entry.category);
+
+  // group categories: show the pick-list so she can add/remove items
+  const itemsDiv = document.getElementById("edit-items");
+  itemsDiv.innerHTML = "";
+  if (conf.group) {
+    const selected = entryItems(entry);
+    const listed = itemsFor(entry.category);
+    listed.forEach(it => {
+      itemsDiv.appendChild(pickerRow(it.name, it.dose, selected.includes(it.name)));
+    });
+    // keep one-off/custom names that aren't in the list anymore
+    selected.forEach(name => {
+      if (!listed.some(it => it.name === name)) {
+        itemsDiv.appendChild(pickerRow(name, "", true));
+      }
+    });
+  }
+
+  const isWeight = !!conf.numeric;
+  document.getElementById("edit-weight-field").hidden = !isWeight;
+  if (isWeight) document.getElementById("edit-weight").value = entry.amount != null ? entry.amount : "";
+
+  document.getElementById("edit-time").value = entry.timestamp || nowLocalInput();
+  editDialog.showModal();
+}
+
+document.getElementById("edit-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const entries = getEntries();
+  const i = entries.findIndex(x => x.id === editingEntryId);
+  if (i < 0) { editDialog.close(); return; }
+  const entry = entries[i];
+  const conf = CATALOG[entry.category] || {};
+
+  if (conf.group) {
+    const items = Array.from(document.querySelectorAll("#edit-items input:checked")).map(cb => cb.value);
+    if (!items.length) { alert("Nothing is selected — use Un-check instead if this wasn't done."); return; }
+    entry.items = items;
+    delete entry.item; // upgrade any legacy single-item shape
+  }
+  if (conf.numeric) {
+    const v = document.getElementById("edit-weight").value;
+    const n = Number(v);
+    if (v === "" || !isFinite(n) || n <= 0) { alert("Type your weight first. 💛"); return; }
+    entry.amount = n;
+  }
+  entry.timestamp = document.getElementById("edit-time").value;
+  entries[i] = entry;
+  setEntries(entries);
+  editDialog.close();
+  refreshCurrentView();
+});
+
+document.getElementById("edit-uncheck").addEventListener("click", () => {
+  setEntries(getEntries().filter(x => x.id !== editingEntryId));
+  editDialog.close();
+  refreshCurrentView();
+});
+document.getElementById("edit-cancel").addEventListener("click", () => editDialog.close());
+
+/* ============================================================
+   9. HISTORY — every entry, newest first, tap to edit
    ============================================================ */
 function renderHistory() {
   const list = document.getElementById("history-list");
@@ -477,25 +546,27 @@ function entryCard(e) {
   const main = document.createElement("div");
   main.className = "main";
   const catLabel = CATALOG[e.category] ? CATALOG[e.category].label : e.category;
+  const title = entryItems(e).join(", ") || catLabel;
   let sub = catLabel;
-  if (e.amount != null) sub += e.category === "weight" ? ` · ${e.amount}` : ` · ${e.amount} oz`;
-  if (e.location) sub += ` · ${e.location}`;
-  main.innerHTML = `<div class="title">${escapeHtml(e.item)}</div>` +
+  if (e.category === "weight" && e.amount != null) sub += ` · ${e.amount}`;
+  if (e.location) sub += ` · ${e.location}`;             // legacy v1 field
+  main.innerHTML = `<div class="title">${escapeHtml(title)}</div>` +
     `<div class="sub">${escapeHtml(sub)}</div>` +
-    (e.notes ? `<div class="notes">${escapeHtml(e.notes)}</div>` : "");
+    (e.notes ? `<div class="notes">${escapeHtml(e.notes)}</div>` : ""); // legacy v1 field
 
   card.appendChild(time);
   card.appendChild(main);
   card.style.cursor = "pointer";
-  card.addEventListener("click", () => openEntryDialog({ category: e.category, entry: e }));
+  card.addEventListener("click", () => openEdit(e));
   return card;
 }
 
 /* ============================================================
-   9. SCHEDULE editor
+   10. SCHEDULE editor
    ============================================================ */
 const schedDialog = document.getElementById("sched-dialog");
 let editingSchedId = null;
+const S_ADD_NEW = "__add_new__";
 
 function renderSchedule() {
   const list = document.getElementById("schedule-list");
@@ -506,22 +577,68 @@ function renderSchedule() {
     card.className = "card sched-row";
     card.innerHTML =
       `<div class="sched-time">${to12h(s.time)}</div>` +
-      `<div class="main"><div class="title">${escapeHtml(s.label)}</div>` +
+      `<div class="main"><div class="title">${escapeHtml(rowTitle(s))}</div>` +
       (s.note ? `<div class="sub">${escapeHtml(s.note)}</div>` : "") + `</div>`;
     card.addEventListener("click", () => openSchedDialog(s));
     list.appendChild(card);
   });
 }
 
+function fillSchedItemSelect(cat, preset) {
+  const conf = CATALOG[cat];
+  const field = document.getElementById("s-item-field");
+  const sel = document.getElementById("s-item");
+  document.getElementById("s-newitem-field").hidden = true;
+  document.getElementById("s-newitem").value = "";
+  if (conf.group || conf.numeric) { field.hidden = true; return; }
+  field.hidden = false;
+  sel.innerHTML = "";
+  itemsFor(cat).forEach(it => {
+    const o = document.createElement("option");
+    o.value = it.name;
+    o.textContent = it.dose ? `${it.name} — ${it.dose}` : it.name;
+    sel.appendChild(o);
+  });
+  if (preset && !Array.from(sel.options).some(o => o.value === preset)) {
+    const o = document.createElement("option");
+    o.value = preset; o.textContent = preset;
+    sel.appendChild(o);
+  }
+  const add = document.createElement("option");
+  add.value = S_ADD_NEW; add.textContent = "➕ Add a new one…";
+  sel.appendChild(add);
+  if (preset) sel.value = preset;
+}
+
 function openSchedDialog(item) {
   editingSchedId = item ? item.id : null;
   document.getElementById("sched-dialog-title").textContent = item ? "Edit scheduled item" : "New scheduled item";
   document.getElementById("s-time").value = item ? item.time : "08:00";
-  document.getElementById("s-label").value = item ? item.label : "";
-  document.getElementById("s-note").value = item ? item.note : "";
+  document.getElementById("s-note").value = item ? (item.note || "") : "";
+
+  const catSel = document.getElementById("s-category");
+  catSel.innerHTML = "";
+  Object.keys(CATALOG).filter(c => !CATALOG[c].numeric).forEach(cat => {
+    const o = document.createElement("option");
+    o.value = cat; o.textContent = CATALOG[cat].label;
+    catSel.appendChild(o);
+  });
+  const cat = item ? item.category : "supplements";
+  catSel.value = cat;
+  fillSchedItemSelect(cat, item ? item.item : null);
+
   document.getElementById("sched-delete").hidden = !item;
   schedDialog.showModal();
 }
+
+document.getElementById("s-category").addEventListener("change", (e) => {
+  fillSchedItemSelect(e.target.value, null);
+});
+document.getElementById("s-item").addEventListener("change", (e) => {
+  const isNew = e.target.value === S_ADD_NEW;
+  document.getElementById("s-newitem-field").hidden = !isNew;
+  if (isNew) { try { document.getElementById("s-newitem").focus(); } catch (err) {} }
+});
 
 document.getElementById("add-schedule-btn").addEventListener("click", () => openSchedDialog(null));
 document.getElementById("reset-schedule-btn").addEventListener("click", () => {
@@ -532,17 +649,30 @@ document.getElementById("reset-schedule-btn").addEventListener("click", () => {
 
 document.getElementById("sched-form").addEventListener("submit", (e) => {
   e.preventDefault();
+  const cat = document.getElementById("s-category").value;
+  const conf = CATALOG[cat];
+  let itemName = null;
+  if (!conf.group && !conf.numeric) {
+    itemName = document.getElementById("s-item").value;
+    if (itemName === S_ADD_NEW) {
+      const newName = document.getElementById("s-newitem").value.trim();
+      if (!newName) { alert("Type a name for the new item, or pick one from the list."); return; }
+      itemName = newName;
+      addCustomItem(cat, newName);
+    }
+  }
   const schedule = getSchedule();
   const rec = {
-    id: editingSchedId || ("sched-" + uid()),
+    id: editingSchedId || ("sched2-" + uid()),
     time: document.getElementById("s-time").value,
-    label: document.getElementById("s-label").value.trim(),
+    category: cat,
+    item: itemName,
+    group: !!conf.group,
     note: document.getElementById("s-note").value.trim(),
-    category: null,
   };
   if (editingSchedId) {
     const i = schedule.findIndex(x => x.id === editingSchedId);
-    if (i >= 0) rec.category = schedule[i].category, schedule[i] = rec;
+    if (i >= 0) schedule[i] = rec;
   } else {
     schedule.push(rec);
   }
@@ -560,12 +690,12 @@ document.getElementById("sched-delete").addEventListener("click", () => {
 });
 
 /* ============================================================
-   10. EXPORT / IMPORT backup
+   11. EXPORT / IMPORT backup
    ============================================================ */
 document.getElementById("export-btn").addEventListener("click", () => {
   const data = {
     app: "christinas-health-tracker",
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     entries: getEntries(),
     schedule: getSchedule(),
@@ -591,7 +721,12 @@ document.getElementById("import-input").addEventListener("change", (e) => {
       if (!Array.isArray(data.entries)) throw new Error("no entries");
       if (!confirm(`Restore ${data.entries.length} entries from this backup? This REPLACES what's currently on the phone.`)) return;
       setEntries(data.entries);
-      if (Array.isArray(data.schedule)) setSchedule(data.schedule);
+      if (Array.isArray(data.schedule)) {
+        // a v1 backup's schedule rows (label-based) don't fit the v2 checklist;
+        // keep the current v2 schedule in that case, entries restore fine.
+        const looksV2 = data.schedule.every(s => s.category);
+        if (looksV2) setSchedule(data.schedule);
+      }
       alert("Restored.");
       show("today");
     } catch (err) {
@@ -605,19 +740,15 @@ document.getElementById("import-input").addEventListener("change", (e) => {
 });
 
 /* ============================================================
-   11. misc
+   12. misc
    ============================================================ */
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function refreshCurrentView() {
-  const active = document.querySelector(".tab.active");
-  show(active ? active.dataset.view : "today");
-}
 
 /* ============================================================
-   12. CALENDAR REMINDERS — export the schedule as an .ics file.
+   13. CALENDAR REMINDERS — export the schedule as an .ics file.
    Each scheduled item becomes a daily repeating calendar event with
    an alarm, so the iPhone itself reminds her (even when this app is
    closed). No server needed — the phone's Calendar does the alerting.
@@ -663,11 +794,11 @@ function buildIcs() {
     lines.push(icsFold("DTSTART:" + dtstart));
     lines.push("DURATION:PT10M");
     lines.push("RRULE:FREQ=DAILY");
-    lines.push(icsFold("SUMMARY:" + icsEscape(s.label)));
+    lines.push(icsFold("SUMMARY:" + icsEscape(rowTitle(s))));
     if (s.note) lines.push(icsFold("DESCRIPTION:" + icsEscape(s.note)));
     lines.push("BEGIN:VALARM");
     lines.push("ACTION:DISPLAY");
-    lines.push(icsFold("DESCRIPTION:" + icsEscape(s.label)));
+    lines.push(icsFold("DESCRIPTION:" + icsEscape(rowTitle(s))));
     lines.push("TRIGGER:-PT0M"); // alert at the scheduled time
     lines.push("END:VALARM");
     lines.push("END:VEVENT");
@@ -691,10 +822,10 @@ function exportIcs() {
 document.querySelectorAll(".calendar-btn").forEach(b => b.addEventListener("click", exportIcs));
 
 /* ============================================================
-   13. WELCOME / how-to popup (shows on open until dismissed)
+   14. WELCOME / how-to popup (shows on open until dismissed)
    ============================================================ */
 const welcomeDialog = document.getElementById("welcome-dialog");
-const WELCOME_KEY = "cht.welcomeSeen";
+const WELCOME_KEY = "cht.welcomeSeen2"; // v2 key: show the new how-to once, even if v1's was dismissed
 
 function openWelcome() {
   document.getElementById("welcome-hide").checked = false;
@@ -714,13 +845,14 @@ function maybeShowWelcome() {
   if (!seen) openWelcome();
 }
 
-// Register the service worker for offline use (added in the PWA step).
+// Register the service worker for offline use.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("service-worker.js").catch(() => {});
   });
 }
 
-// Start on Today, then greet on first open
+// Migrate v1 data (one-time schedule reseed), then start on Today
+migrate();
 show("today");
 maybeShowWelcome();
