@@ -188,6 +188,31 @@ dialog h2 { margin: 0 0 14px; }
 
 .empty { color: var(--muted); text-align: center; padding: 30px 10px; }
 
+/* ---------- v3: patch-location rows in the picker ---------- */
+.picker-item.with-loc { flex-direction: column; align-items: stretch; gap: 6px; }
+.picker-main { display: flex; align-items: center; gap: 12px; flex: 1; }
+.picker-item.with-loc .picker-main { min-height: 36px; }
+.loc-select, .loc-other {
+  font-size: 15px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+  margin: 0 0 6px 36px; width: calc(100% - 36px);
+}
+
+/* ---------- v3: Log view ---------- */
+.offline-banner {
+  background: color-mix(in srgb, #b8860b 14%, var(--card));
+  border: 1px solid color-mix(in srgb, #b8860b 40%, var(--border));
+  border-radius: 12px; padding: 10px 14px;
+  font-size: 15px; margin-bottom: 12px;
+}
+.water-banner {
+  background: var(--green); color: #fff; border-radius: 14px;
+  padding: 16px; text-align: center; margin-bottom: 8px;
+}
+.water-banner .water-num { font-size: 34px; font-weight: 700; }
+.water-banner .water-label { font-size: 14px; opacity: .92; }
+.water-banner .water-sub { font-size: 13px; opacity: .85; margin-top: 4px; }
+
 /* ---------- reminders box on Schedule ---------- */
 .reminder-box {
   margin-top: 24px; padding: 16px; border: 1px solid var(--border);

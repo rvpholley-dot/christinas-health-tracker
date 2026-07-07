@@ -43,9 +43,12 @@ def _describe(row) -> str:
     parts = []
 
     if category == "water":
-        oz = f"{amount:g} oz" if amount is not None else "water"
+        oz = f"{amount:g} oz" if amount is not None else None
         label = ", ".join(items) if items else None
-        parts.append(f"{oz} ({label})" if label else oz)
+        if oz and label:
+            parts.append(f"{oz} ({label})")
+        else:
+            parts.append(oz or label or "water")
     elif category == "weight":
         parts.append(f"{amount:g} lb" if amount is not None else "weight")
     elif category == "patches":

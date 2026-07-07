@@ -1,7 +1,7 @@
 /* Offline support. Caches the app shell so the tracker opens with no signal.
    IMPORTANT: bump CACHE_VERSION whenever you change any app file, so phones
    pick up the new version instead of serving the old cached one. */
-const CACHE_VERSION = "cht-v5";
+const CACHE_VERSION = "cht-v6";
 const SHELL = [
   "./",
   "index.html",
@@ -31,6 +31,9 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // Never intercept cross-origin requests (the sync/log API on the tailnet
+  // must always hit the network, and /log has its own localStorage cache).
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   // Cache-first for the shell; fall back to network, then cache the result.
   event.respondWith(
     caches.match(event.request).then((cached) =>

@@ -27,6 +27,17 @@
     <div id="history-list" class="history-list"></div>
   </section>
 
+  <!-- ===== LOG (the family computer's view — includes chat-logged entries) ===== -->
+  <section id="view-log" class="view" hidden>
+    <div id="log-offline" class="offline-banner" hidden>Offline — showing the last saved copy.</div>
+    <div id="log-setup" class="hint" hidden>This tab shows your week from the family computer — water totals, where your patches are, and anything you logged by chatting with the helper bot. It isn't set up on this phone yet; Brian will do that in the More tab.</div>
+    <div id="log-water" class="water-banner" hidden></div>
+    <h2 id="log-patches-h" hidden>Patches — where they are now</h2>
+    <div id="log-patches" class="history-list"></div>
+    <h2 id="log-entries-h" hidden>Last 7 days</h2>
+    <div id="log-entries" class="history-list"></div>
+  </section>
+
   <!-- ===== SCHEDULE (editable) ===== -->
   <section id="view-schedule" class="view" hidden>
     <p class="hint">These become the tappable bars on the Today screen. Adjust times or items anytime.</p>
@@ -49,6 +60,20 @@
     <h2>Reminders</h2>
     <p class="hint">Let your iPhone remind you of each scheduled time (works even when this app is closed).</p>
     <button class="secondary-btn calendar-btn">📅 Add my schedule to iPhone Calendar</button>
+
+    <h2>Sync to the family computer</h2>
+    <p class="hint">With Tailscale on, everything you log is also saved on the family computer — that fills the Log tab and lets the helper bot see your day. The app still works fine without it; entries wait and send later.</p>
+    <label class="field">Server address
+      <input id="api-base" type="url" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </label>
+    <label class="field">Secret code
+      <input id="api-secret" type="password" autocapitalize="off">
+    </label>
+    <div class="row-buttons">
+      <button id="sync-save-btn" class="secondary-btn">Save sync settings</button>
+      <button id="sync-now-btn" class="secondary-btn">Sync now</button>
+    </div>
+    <p id="sync-status" class="hint"></p>
 
     <h2>Backup</h2>
     <p class="hint">Your data lives only on this phone. Export a copy now and then, and keep it safe (email or AirDrop it to yourself).</p>
@@ -166,6 +191,7 @@
 <nav class="tabbar">
   <button data-view="today" class="tab active">Today</button>
   <button data-view="history" class="tab">History</button>
+  <button data-view="log" class="tab">Log</button>
   <button data-view="schedule" class="tab">Schedule</button>
   <button data-view="settings" class="tab">More</button>
 </nav>

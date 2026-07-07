@@ -5,7 +5,13 @@
    v2: the Today screen is a one-tap checklist. One bar per item; tapping a
    bar logs it at the current time and shows a green check. Patches/Oils are
    "group" bars that open a multi-select. There is no overdue styling — an
-   unchecked circle next to a passed time is the only signal. */
+   unchecked circle next to a passed time is the only signal.
+
+   v3: push-only sync to the family computer over Tailscale (this phone's
+   localStorage stays the source of truth), per-patch body locations, and a
+   Log tab that shows the server's view — water totals, patch placements,
+   and entries logged by chatting with the helper bot. Un-checking now keeps
+   a hidden `deleted` tombstone locally so the deletion syncs up too. */
 
 "use strict";
 
@@ -56,6 +62,15 @@ const CATALOG = {
   },
 };
 
+/* Canonical body spots for LifeWave patch placement (v3). The picker's
+   "Somewhere else…" option lets her type anything not listed here. */
+const PATCH_SPOTS = [
+  "Back of neck", "Base of skull (GB20)", "Behind right ear", "Behind left ear",
+  "Right wrist", "Left wrist", "Right ankle", "Left ankle",
+  "Sole of right foot", "Sole of left foot", "Over the liver", "Belly button",
+  "Upper spine", "Lower back", "Right shoulder", "Left shoulder",
+];
+
 /* Default schedule — ONE ITEM PER ROW (v2), seeded from Christina's notes.
    She can edit/add/remove these on the Schedule screen. */
 const DEFAULT_SCHEDULE = [
@@ -83,7 +98,12 @@ const DEFAULT_SCHEDULE = [
 /* ============================================================
    2. STORAGE — tiny helpers over localStorage (JSON).
    ============================================================ */
-const KEYS = { entries: "cht.entries", schedule: "cht.schedule", version: "cht.version" };
+const KEYS = {
+  entries: "cht.entries", schedule: "cht.schedule", version: "cht.version",
+  // v3 sync
+  queue: "cht.syncQueue", logCache: "cht.logCache", apiBase: "cht.apiBase",
+  apiSecret: "cht.apiSecret", syncSeeded: "cht.syncSeeded", lastSync: "cht.lastSync",
+};
 const APP_DATA_VERSION = 2;
 
 function load(key, fallback) {
@@ -211,8 +231,8 @@ function rowTitle(s) {
 /* ============================================================
    5. VIEW ROUTING
    ============================================================ */
-const VIEWS = ["today", "history", "schedule", "settings"];
-const TITLES = { today: "Today", history: "History", schedule: "Schedule", settings: "More" };
+const VIEWS = ["today", "history", "log", "schedule", "settings"];
+const TITLES = { today: "Today", history: "History", log: "Log", schedule: "Schedule", settings: "More" };
 
 function show(view) {
   VIEWS.forEach(v => { document.getElementById("view-" + v).hidden = (v !== view); });
@@ -221,6 +241,7 @@ function show(view) {
     t.classList.toggle("active", t.dataset.view === view));
   if (view === "today") renderToday();
   if (view === "history") renderHistory();
+  if (view === "log") renderLog();
   if (view === "schedule") renderSchedule();
 }
 
@@ -242,7 +263,7 @@ function renderToday() {
   const schedule = getSchedule().slice().sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
   const entries = getEntries();
   const tKey = todayKey();
-  const todaysEntries = entries.filter(e => e.timestamp && e.timestamp.slice(0, 10) === tKey);
+  const todaysEntries = entries.filter(e => !e.deleted && e.timestamp && e.timestamp.slice(0, 10) === tKey);
 
   const list = document.getElementById("today-list");
   list.innerHTML = "";
@@ -325,15 +346,17 @@ function renderToday() {
 // one-tap check-off for a single-item bar
 function quickLog(s) {
   const entries = getEntries();
-  entries.push({
+  const entry = {
     id: uid(),
     category: s.category,
     items: [s.item || rowTitle(s)],
     timestamp: nowLocalInput(),
     amount: null,
     scheduleId: s.id,
-  });
+  };
+  entries.push(entry);
   setEntries(entries);
+  enqueueSync([entry.id]);
   renderToday();
 }
 
@@ -380,23 +403,92 @@ function renderPickerBody() {
   document.getElementById("picker-newitem-field").hidden = isWeight;
   if (isWeight) return;
   itemsFor(cat).forEach(it => {
-    itemsDiv.appendChild(pickerRow(it.name, it.dose, false));
+    itemsDiv.appendChild(pickerRow(it.name, it.dose, false, cat === "patches" ? null : undefined));
   });
 }
 
-// one labelled checkbox row (shared by picker and edit dialogs)
-function pickerRow(name, dose, checked) {
+/* one labelled checkbox row (shared by picker and edit dialogs).
+   `loc` is undefined for most categories; for patches pass the current
+   location string (or null) and the row grows a where-did-it-go select
+   that appears once the patch is checked. */
+const LOC_OTHER = "__other__";
+
+function pickerRow(name, dose, checked, loc) {
   const label = document.createElement("label");
   label.className = "picker-item";
+  const main = document.createElement("div");
+  main.className = "picker-main";
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.value = name;
   cb.checked = checked;
   const span = document.createElement("span");
   span.innerHTML = escapeHtml(name) + (dose ? `<span class="dose">${escapeHtml(dose)}</span>` : "");
-  label.appendChild(cb);
-  label.appendChild(span);
+  main.appendChild(cb);
+  main.appendChild(span);
+  label.appendChild(main);
+
+  if (loc !== undefined) {
+    label.classList.add("with-loc");
+    const sel = document.createElement("select");
+    sel.className = "loc-select";
+    const blank = document.createElement("option");
+    blank.value = ""; blank.textContent = "Where did it go? (optional)";
+    sel.appendChild(blank);
+    PATCH_SPOTS.forEach(spot => {
+      const o = document.createElement("option");
+      o.value = spot; o.textContent = spot;
+      sel.appendChild(o);
+    });
+    const other = document.createElement("option");
+    other.value = LOC_OTHER; other.textContent = "Somewhere else…";
+    sel.appendChild(other);
+
+    const otherInput = document.createElement("input");
+    otherInput.type = "text";
+    otherInput.className = "loc-other";
+    otherInput.autocapitalize = "words";
+    otherInput.placeholder = "Type where";
+
+    if (loc) {
+      if (PATCH_SPOTS.includes(loc)) { sel.value = loc; }
+      else { sel.value = LOC_OTHER; otherInput.value = loc; }
+    }
+    const updateVis = () => {
+      sel.hidden = !cb.checked;
+      otherInput.hidden = !cb.checked || sel.value !== LOC_OTHER;
+    };
+    cb.addEventListener("change", updateVis);
+    sel.addEventListener("change", () => {
+      updateVis();
+      if (!otherInput.hidden) { try { otherInput.focus(); } catch (e) {} }
+    });
+    updateVis();
+    label.appendChild(sel);
+    label.appendChild(otherInput);
+  }
   return label;
+}
+
+// the chosen location for one picker row, or null
+function rowLocation(rowEl) {
+  const sel = rowEl.querySelector(".loc-select");
+  if (!sel) return null;
+  if (sel.value === LOC_OTHER) return rowEl.querySelector(".loc-other").value.trim() || null;
+  return sel.value || null;
+}
+
+// checked items (and their locations, for patches) inside a container
+function collectChecked(containerId) {
+  const items = [], locations = [];
+  document.querySelectorAll("#" + containerId + " .picker-item").forEach(rowEl => {
+    const cb = rowEl.querySelector("input[type=checkbox]");
+    if (!cb || !cb.checked) return;
+    items.push(cb.value);
+    const loc = rowLocation(rowEl);
+    if (loc) locations.push({ item: cb.value, location: loc });
+  });
+  return { items, locations: locations.length ? locations : null };
 }
 
 document.getElementById("picker-form").addEventListener("submit", (e) => {
@@ -406,6 +498,7 @@ document.getElementById("picker-form").addEventListener("submit", (e) => {
   const conf = CATALOG[cat];
 
   let items = [];
+  let locations = null;
   let amount = null;
 
   if (conf.numeric) {
@@ -415,22 +508,27 @@ document.getElementById("picker-form").addEventListener("submit", (e) => {
     amount = n;
     items = ["Weight"];
   } else {
-    items = Array.from(document.querySelectorAll("#picker-items input:checked")).map(cb => cb.value);
+    const picked = collectChecked("picker-items");
+    items = picked.items;
+    locations = picked.locations;
     const extra = document.getElementById("picker-newitem").value.trim();
     if (extra) { items.push(extra); addCustomItem(cat, extra); }
     if (!items.length) return; // nothing selected — stay open, no error
   }
 
   const entries = getEntries();
-  entries.push({
+  const entry = {
     id: uid(),
     category: cat,
     items: items,
     timestamp: nowLocalInput(),
     amount: amount,
     scheduleId: pickerState.scheduleId,
-  });
+  };
+  if (locations) entry.locations = locations;
+  entries.push(entry);
   setEntries(entries);
+  enqueueSync([entry.id]);
   pickerDialog.close();
   refreshCurrentView();
 });
@@ -455,13 +553,19 @@ function openEdit(entry) {
   if (conf.group) {
     const selected = entryItems(entry);
     const listed = itemsFor(entry.category);
+    const isPatches = entry.category === "patches";
+    const locFor = name => {
+      const l = (entry.locations || []).find(x => x.item === name);
+      return l ? l.location : null;
+    };
     listed.forEach(it => {
-      itemsDiv.appendChild(pickerRow(it.name, it.dose, selected.includes(it.name)));
+      itemsDiv.appendChild(pickerRow(it.name, it.dose, selected.includes(it.name),
+        isPatches ? locFor(it.name) : undefined));
     });
     // keep one-off/custom names that aren't in the list anymore
     selected.forEach(name => {
       if (!listed.some(it => it.name === name)) {
-        itemsDiv.appendChild(pickerRow(name, "", true));
+        itemsDiv.appendChild(pickerRow(name, "", true, isPatches ? locFor(name) : undefined));
       }
     });
   }
@@ -483,9 +587,11 @@ document.getElementById("edit-form").addEventListener("submit", (e) => {
   const conf = CATALOG[entry.category] || {};
 
   if (conf.group) {
-    const items = Array.from(document.querySelectorAll("#edit-items input:checked")).map(cb => cb.value);
-    if (!items.length) { alert("Nothing is selected — use Un-check instead if this wasn't done."); return; }
-    entry.items = items;
+    const picked = collectChecked("edit-items");
+    if (!picked.items.length) { alert("Nothing is selected — use Un-check instead if this wasn't done."); return; }
+    entry.items = picked.items;
+    if (picked.locations) entry.locations = picked.locations;
+    else delete entry.locations;
     delete entry.item; // upgrade any legacy single-item shape
   }
   if (conf.numeric) {
@@ -497,12 +603,21 @@ document.getElementById("edit-form").addEventListener("submit", (e) => {
   entry.timestamp = document.getElementById("edit-time").value;
   entries[i] = entry;
   setEntries(entries);
+  enqueueSync([entry.id]);
   editDialog.close();
   refreshCurrentView();
 });
 
 document.getElementById("edit-uncheck").addEventListener("click", () => {
-  setEntries(getEntries().filter(x => x.id !== editingEntryId));
+  // keep a hidden tombstone (not a hard delete) so the un-check syncs up;
+  // every view filters `deleted` out, so it disappears from the phone.
+  const entries = getEntries();
+  const i = entries.findIndex(x => x.id === editingEntryId);
+  if (i >= 0) {
+    entries[i].deleted = 1;
+    setEntries(entries);
+    enqueueSync([editingEntryId]);
+  }
   editDialog.close();
   refreshCurrentView();
 });
@@ -513,7 +628,8 @@ document.getElementById("edit-cancel").addEventListener("click", () => editDialo
    ============================================================ */
 function renderHistory() {
   const list = document.getElementById("history-list");
-  const entries = getEntries().slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const entries = getEntries().filter(e => !e.deleted)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   list.innerHTML = "";
   if (!entries.length) {
     list.innerHTML = `<div class="empty">No entries logged yet.</div>`;
@@ -533,8 +649,9 @@ function renderHistory() {
   });
 }
 
-// a card showing one logged entry (used in History + Today ad hoc)
-function entryCard(e) {
+// a card showing one logged entry (used in History, Today ad hoc, and the
+// Log view — Log passes clickable=false because server rows aren't editable here)
+function entryCard(e, clickable = true) {
   const card = document.createElement("div");
   card.className = "card";
   const d = parseInput(e.timestamp);
@@ -549,15 +666,22 @@ function entryCard(e) {
   const title = entryItems(e).join(", ") || catLabel;
   let sub = catLabel;
   if (e.category === "weight" && e.amount != null) sub += ` · ${e.amount}`;
+  if (e.category === "water" && e.amount != null) sub += ` · ${e.amount} oz`;
+  if (Array.isArray(e.locations) && e.locations.length) {
+    sub += " · " + e.locations.map(l => `${l.item}: ${l.location}`).join(", ");
+  }
   if (e.location) sub += ` · ${e.location}`;             // legacy v1 field
+  if (e.source === "telegram") sub += " · via chat";     // Log view only
   main.innerHTML = `<div class="title">${escapeHtml(title)}</div>` +
     `<div class="sub">${escapeHtml(sub)}</div>` +
     (e.notes ? `<div class="notes">${escapeHtml(e.notes)}</div>` : ""); // legacy v1 field
 
   card.appendChild(time);
   card.appendChild(main);
-  card.style.cursor = "pointer";
-  card.addEventListener("click", () => openEdit(e));
+  if (clickable) {
+    card.style.cursor = "pointer";
+    card.addEventListener("click", () => openEdit(e));
+  }
   return card;
 }
 
@@ -727,6 +851,9 @@ document.getElementById("import-input").addEventListener("change", (e) => {
         const looksV2 = data.schedule.every(s => s.category);
         if (looksV2) setSchedule(data.schedule);
       }
+      // the restored entries are unknown to the sync queue — re-seed it
+      save(KEYS.syncSeeded, false);
+      seedQueueIfNeeded();
       alert("Restored.");
       show("today");
     } catch (err) {
@@ -738,6 +865,219 @@ document.getElementById("import-input").addEventListener("change", (e) => {
   };
   reader.readAsText(file);
 });
+
+/* ============================================================
+   11b. SYNC (v3) — push entries up to the family computer.
+   This phone's localStorage stays the source of truth; the queue
+   holds entry ids to POST. Offline is fine — ids wait in the
+   queue and flush when the app next gets through. The server
+   upserts by id, so retries and backfills are always safe.
+   ============================================================ */
+const DEFAULT_API_BASE = "https://pcc-005.taila270a3.ts.net:8446";
+
+function getApiBase() {
+  const v = load(KEYS.apiBase, "");
+  return (v || DEFAULT_API_BASE).replace(/\/+$/, "");
+}
+function getApiSecret() { return load(KEYS.apiSecret, ""); }
+function syncEnabled() { return !!getApiSecret(); }
+
+function getQueue() { return load(KEYS.queue, []); }
+function setQueue(ids) { save(KEYS.queue, ids); }
+
+function enqueueSync(ids) {
+  const q = getQueue();
+  ids.forEach(id => { if (!q.includes(id)) q.push(id); });
+  setQueue(q);
+  flushQueue();
+}
+
+/* First run with sync configured: queue every entry already on the phone.
+   The server upserts by id, so this backfills the whole history. */
+function seedQueueIfNeeded() {
+  if (!syncEnabled() || load(KEYS.syncSeeded, false)) return;
+  enqueueSync(getEntries().map(e => e.id).filter(Boolean));
+  save(KEYS.syncSeeded, true);
+}
+
+function toSyncShape(e) {
+  let locations = (Array.isArray(e.locations) && e.locations.length) ? e.locations : null;
+  if (!locations && e.location) {           // legacy v1 single-location field
+    locations = [{ item: entryItems(e)[0] || e.category, location: e.location }];
+  }
+  return {
+    id: e.id,
+    category: e.category,
+    items: entryItems(e),
+    locations: locations,
+    amount: e.amount != null ? e.amount : null,
+    timestamp: e.timestamp,
+    scheduleId: e.scheduleId || null,
+    notes: e.notes || null,
+    deleted: e.deleted ? 1 : 0,
+  };
+}
+function schedSyncShape(s) {
+  return { id: s.id, time: s.time, category: s.category,
+           item: s.item || null, group: !!s.group, note: s.note || "" };
+}
+
+let flushing = false;
+async function flushQueue() {
+  if (flushing || !syncEnabled()) { updateSyncStatus(); return; }
+  const queue = getQueue();
+  if (!queue.length) { updateSyncStatus(); return; }
+  flushing = true;
+  try {
+    const all = getEntries();
+    const found = queue.map(id => all.find(e => e.id === id)).filter(Boolean);
+    const res = await fetch(getApiBase() + "/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CHT-Secret": getApiSecret() },
+      body: JSON.stringify({
+        entries: found.map(toSyncShape),
+        schedule: getSchedule().map(schedSyncShape),
+      }),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    await res.json();
+    // clear what this snapshot covered; anything logged mid-flight stays queued
+    const done = new Set(queue);
+    setQueue(getQueue().filter(id => !done.has(id)));
+    save(KEYS.lastSync, nowLocalInput());
+  } catch (err) {
+    console.warn("Sync failed (entries stay queued):", err);
+  } finally {
+    flushing = false;
+    updateSyncStatus();
+  }
+}
+
+function updateSyncStatus() {
+  const el = document.getElementById("sync-status");
+  if (!el) return;
+  if (!syncEnabled()) { el.textContent = "Not set up yet."; return; }
+  const q = getQueue().length;
+  let txt = q ? `${q} ${q === 1 ? "entry" : "entries"} waiting to send.` : "All caught up.";
+  const last = load(KEYS.lastSync, null);
+  if (last) txt += ` Last sync: ${fmtTime(parseInput(last))}, ${fmtDateLong(parseInput(last))}.`;
+  el.textContent = txt;
+}
+
+function initSyncSettings() {
+  const baseInput = document.getElementById("api-base");
+  const secretInput = document.getElementById("api-secret");
+  baseInput.value = load(KEYS.apiBase, "") || DEFAULT_API_BASE;
+  secretInput.value = getApiSecret();
+  document.getElementById("sync-save-btn").addEventListener("click", () => {
+    save(KEYS.apiBase, baseInput.value.trim());
+    save(KEYS.apiSecret, secretInput.value.trim());
+    save(KEYS.syncSeeded, false);   // fresh server may need the full history
+    seedQueueIfNeeded();
+    updateSyncStatus();
+  });
+  document.getElementById("sync-now-btn").addEventListener("click", () => {
+    seedQueueIfNeeded();
+    flushQueue();
+  });
+  updateSyncStatus();
+}
+
+/* ============================================================
+   11c. LOG view (v3) — the server's picture of her week: water
+   totals, current patch spots, and every entry (including ones
+   logged by chatting with the helper bot). Falls back to the
+   last saved copy with a banner when the tailnet is off.
+   ============================================================ */
+async function renderLog() {
+  const setup = document.getElementById("log-setup");
+  setup.hidden = syncEnabled();
+  document.getElementById("log-offline").hidden = true;
+  if (!syncEnabled()) {
+    document.getElementById("log-water").hidden = true;
+    document.getElementById("log-patches-h").hidden = true;
+    document.getElementById("log-entries-h").hidden = true;
+    document.getElementById("log-patches").innerHTML = "";
+    document.getElementById("log-entries").innerHTML = "";
+    return;
+  }
+  let data = null, fromCache = false;
+  try {
+    const res = await fetch(getApiBase() + "/log?days=7",
+      { headers: { "X-CHT-Secret": getApiSecret() } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    data = await res.json();
+    save(KEYS.logCache, data);
+  } catch (err) {
+    data = load(KEYS.logCache, null);
+    fromCache = true;
+  }
+  document.getElementById("log-offline").hidden = !(fromCache && data);
+  const empty = document.getElementById("log-entries");
+  if (!data) {
+    empty.innerHTML = `<div class="empty">Couldn't reach the family computer — check that Tailscale is on, then try again.</div>`;
+    return;
+  }
+  renderLogData(data);
+}
+
+function fmtDayShort(ts) {
+  return parseInput(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function renderLogData(data) {
+  const totals = data.totals || {};
+
+  // water banner — big number she can glance at
+  const water = document.getElementById("log-water");
+  water.hidden = false;
+  const oz = totals.waterTodayOz || 0;
+  const n = totals.waterTodayCount || 0;
+  const big = oz ? `${oz} oz` : (n ? `${n} logged` : "none yet");
+  let sub = "water today";
+  if (oz && n) sub += ` · ${n} logged`;
+  let extra = "";
+  if (totals.lastWeight) {
+    extra = `<div class="water-sub">Last weight: ${escapeHtml(String(totals.lastWeight.amount))} (${escapeHtml(fmtDayShort(totals.lastWeight.timestamp))})</div>`;
+  }
+  water.innerHTML = `<div class="water-num">${escapeHtml(big)}</div>` +
+    `<div class="water-label">${escapeHtml(sub)}</div>` + extra;
+
+  // current patch spots — most recent location per patch
+  const placements = totals.patchPlacements || [];
+  document.getElementById("log-patches-h").hidden = !placements.length;
+  const pd = document.getElementById("log-patches");
+  pd.innerHTML = "";
+  placements.forEach(p => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<div class="main"><div class="title">${escapeHtml(p.item)}</div>` +
+      `<div class="sub">${escapeHtml(p.location || "?")} · ${escapeHtml(fmtDayShort(p.timestamp))}</div></div>`;
+    pd.appendChild(card);
+  });
+
+  // the week's entries, newest first, grouped by day
+  const entries = data.entries || [];
+  document.getElementById("log-entries-h").hidden = !entries.length;
+  const ld = document.getElementById("log-entries");
+  ld.innerHTML = "";
+  if (!entries.length) {
+    ld.innerHTML = `<div class="empty">Nothing logged in the last 7 days.</div>`;
+    return;
+  }
+  let lastDay = null;
+  entries.forEach(e => {
+    const day = e.timestamp.slice(0, 10);
+    if (day !== lastDay) {
+      lastDay = day;
+      const h = document.createElement("div");
+      h.className = "adhoc-heading";
+      h.textContent = fmtDateLong(parseInput(e.timestamp));
+      ld.appendChild(h);
+    }
+    ld.appendChild(entryCard(e, false));
+  });
+}
 
 /* ============================================================
    12. misc
@@ -852,7 +1192,15 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+// Sync kicks off on load and whenever the app comes back to the foreground
+// or the network returns; each save also triggers a flush via enqueueSync.
+window.addEventListener("online", flushQueue);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) flushQueue(); });
+
 // Migrate v1 data (one-time schedule reseed), then start on Today
 migrate();
+initSyncSettings();
+seedQueueIfNeeded();
+flushQueue();
 show("today");
 maybeShowWelcome();
