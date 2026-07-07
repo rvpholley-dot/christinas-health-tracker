@@ -56,8 +56,7 @@ body {
 .hint { color: var(--muted); font-size: 15px; margin: 4px 2px 14px; }
 h2 { font-size: 17px; margin: 22px 2px 8px; }
 
-/* ---------- quick-log category buttons ---------- */
-.category-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* ---------- category buttons (used in the picker dialog) ---------- */
 .cat-btn {
   min-height: 84px;
   border: 1px solid var(--border); border-radius: 16px;
@@ -84,19 +83,35 @@ h2 { font-size: 17px; margin: 22px 2px 8px; }
 
 .sched-time { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 74px; }
 
-/* status pills on the Today screen */
-.pill { font-size: 13px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
-.pill.done   { background: color-mix(in srgb, var(--ontime) 16%, transparent); color: var(--ontime); }
-.pill.early  { background: color-mix(in srgb, var(--early) 18%, transparent);  color: var(--early); }
-.pill.late   { background: color-mix(in srgb, var(--late) 15%, transparent);   color: var(--late); }
-.pill.todo   { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
-
-.log-btn {
-  border: none; background: var(--green); color: #fff;
-  border-radius: 10px; padding: 10px 14px; font-size: 15px; font-weight: 600;
-  min-height: var(--tap); cursor: pointer;
+/* ---------- checklist bars (Today) ---------- */
+.check-row { cursor: pointer; }
+.check-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: none; }
+.check {
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 2px solid var(--border); background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 700; color: transparent;
 }
-.log-btn:active { background: var(--green-dark); }
+.check.done { background: var(--green); border-color: var(--green); color: #fff; }
+.check-time {
+  font-size: 12px; font-weight: 600; color: var(--green);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.progress-line { color: var(--muted); font-size: 15px; margin: 2px 2px 12px; font-weight: 600; }
+.add-row { justify-content: center; color: var(--green); font-weight: 600; font-size: 17px; min-height: 56px; }
+
+/* ---------- picker dialog ---------- */
+.picker-cats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.picker-cats .cat-btn { min-height: 64px; }
+.picker-items { display: flex; flex-direction: column; margin-bottom: 8px; }
+.picker-item {
+  display: flex; align-items: center; gap: 12px;
+  min-height: var(--tap); font-size: 17px; cursor: pointer;
+  border-bottom: 1px solid var(--border); padding: 4px 2px;
+}
+.picker-item:last-child { border-bottom: none; }
+.picker-item input { width: 24px; height: 24px; flex: none; }
+.picker-item .dose { color: var(--muted); font-size: 13px; display: block; }
 
 .adhoc-heading { color: var(--muted); font-size: 14px; margin: 18px 2px 4px; text-transform: uppercase; letter-spacing: .04em; }
 
@@ -169,20 +184,6 @@ dialog h2 { margin: 0 0 14px; }
 .tab-log { color: var(--green); font-weight: 700; font-size: 13px; }
 
 .empty { color: var(--muted); text-align: center; padding: 30px 10px; }
-
-/* ---------- today nudge banner ---------- */
-.today-banner {
-  border-radius: 12px; padding: 11px 14px; margin: 0 2px 12px;
-  font-size: 15px; font-weight: 600; border: 1px solid var(--border);
-}
-.today-banner.warn {
-  background: color-mix(in srgb, var(--late) 12%, transparent);
-  color: var(--late); border-color: color-mix(in srgb, var(--late) 35%, var(--border));
-}
-.today-banner.ok {
-  background: color-mix(in srgb, var(--ontime) 12%, transparent);
-  color: var(--ontime); border-color: color-mix(in srgb, var(--ontime) 30%, var(--border));
-}
 
 /* ---------- reminders box on Schedule ---------- */
 .reminder-box {
