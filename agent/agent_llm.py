@@ -318,22 +318,10 @@ def _t_get_schedule(config, a):
         conn.close()
     out = []
     for s in sched:
-        done = False
-        for e in todays:
-            if e["schedule_id"] == s["id"]:
-                done = True
-                break
-            if e["category"] == s["category"]:
-                if s["grp"] or not s["item"]:
-                    done = True
-                    break
-                items = json.loads(e["items"]) if e["items"] else []
-                if s["item"] in items:
-                    done = True
-                    break
         out.append({"id": s["id"], "time": s["time"], "category": s["category"],
                     "item": s["item"], "group": bool(s["grp"]),
-                    "note": s["note"], "doneToday": done})
+                    "note": s["note"],
+                    "doneToday": db.schedule_row_done(s, todays)})
     return {"schedule": out}
 
 

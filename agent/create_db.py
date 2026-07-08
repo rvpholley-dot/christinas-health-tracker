@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS schedule (
   time       TEXT NOT NULL,       -- "06:30"
   category   TEXT NOT NULL,
   item       TEXT,
-  grp        TEXT,
+  grp        INTEGER NOT NULL DEFAULT 0,
   note       TEXT,
   active     INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT
