@@ -287,6 +287,7 @@ function renderToday() {
     main.className = "main";
     let subBits = [];
     if (done && s.group) subBits.push(entryItems(done).join(", "));
+    if (done && s.category === "water" && done.amount != null) subBits.push(done.amount + " oz");
     if (s.note) subBits.push(s.note);
     main.innerHTML = `<div class="title">${escapeHtml(rowTitle(s))}</div>` +
       (subBits.length ? `<div class="sub">${escapeHtml(subBits.join(" · "))}</div>` : "");
@@ -343,8 +344,9 @@ function renderToday() {
   list.appendChild(addBar);
 }
 
-// one-tap check-off for a single-item bar
+// one-tap check-off for a single-item bar (water asks how much first)
 function quickLog(s) {
+  if (s.category === "water") { openWaterDialog(s); return; }
   const entries = getEntries();
   const entry = {
     id: uid(),
@@ -359,6 +361,50 @@ function quickLog(s) {
   enqueueSync([entry.id]);
   renderToday();
 }
+
+/* ============================================================
+   6b. WATER AMOUNT — tapping a water bar asks how many ounces.
+   Preset buttons log immediately; "Skip amount" logs without one
+   (the check-off still counts either way).
+   ============================================================ */
+const waterDialog = document.getElementById("water-dialog");
+let waterSched = null;
+
+function openWaterDialog(s) {
+  waterSched = s;
+  document.getElementById("water-title").textContent = (s.item || "Water") + " — how much?";
+  document.getElementById("water-oz").value = "";
+  waterDialog.showModal();
+}
+
+function logWater(amount) {
+  const s = waterSched;
+  const entries = getEntries();
+  const entry = {
+    id: uid(),
+    category: "water",
+    items: [s.item || rowTitle(s)],
+    timestamp: nowLocalInput(),
+    amount: amount,
+    scheduleId: s.id,
+  };
+  entries.push(entry);
+  setEntries(entries);
+  enqueueSync([entry.id]);
+  waterDialog.close();
+  renderToday();
+}
+
+document.querySelectorAll("#water-dialog .preset-btn").forEach(b =>
+  b.addEventListener("click", () => logWater(Number(b.dataset.oz))));
+document.getElementById("water-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = document.getElementById("water-oz").value;
+  const n = Number(v);
+  logWater(v !== "" && isFinite(n) && n > 0 ? n : null);
+});
+document.getElementById("water-skip").addEventListener("click", () => logWater(null));
+document.getElementById("water-cancel").addEventListener("click", () => waterDialog.close());
 
 /* ============================================================
    7. PICKER — multi-select for group bars and "Log something else"
@@ -384,11 +430,13 @@ function openPicker(opts) {
     document.getElementById("picker-items").innerHTML = "";
     document.getElementById("picker-newitem-field").hidden = true;
     document.getElementById("picker-weight-field").hidden = true;
+    document.getElementById("picker-oz-field").hidden = true;
   } else {
     renderPickerBody();
   }
   document.getElementById("picker-newitem").value = "";
   document.getElementById("picker-weight").value = "";
+  document.getElementById("picker-oz").value = "";
   pickerDialog.showModal();
 }
 
@@ -401,6 +449,7 @@ function renderPickerBody() {
   const isWeight = !!conf.numeric;
   document.getElementById("picker-weight-field").hidden = !isWeight;
   document.getElementById("picker-newitem-field").hidden = isWeight;
+  document.getElementById("picker-oz-field").hidden = cat !== "water";
   if (isWeight) return;
   itemsFor(cat).forEach(it => {
     itemsDiv.appendChild(pickerRow(it.name, it.dose, false, cat === "patches" ? null : undefined));
@@ -514,6 +563,11 @@ document.getElementById("picker-form").addEventListener("submit", (e) => {
     const extra = document.getElementById("picker-newitem").value.trim();
     if (extra) { items.push(extra); addCustomItem(cat, extra); }
     if (!items.length) return; // nothing selected — stay open, no error
+    if (cat === "water") {
+      const v = document.getElementById("picker-oz").value;
+      const n = Number(v);
+      if (v !== "" && isFinite(n) && n > 0) amount = n;
+    }
   }
 
   const entries = getEntries();
@@ -574,6 +628,10 @@ function openEdit(entry) {
   document.getElementById("edit-weight-field").hidden = !isWeight;
   if (isWeight) document.getElementById("edit-weight").value = entry.amount != null ? entry.amount : "";
 
+  const isWater = entry.category === "water";
+  document.getElementById("edit-oz-field").hidden = !isWater;
+  if (isWater) document.getElementById("edit-oz").value = entry.amount != null ? entry.amount : "";
+
   document.getElementById("edit-time").value = entry.timestamp || nowLocalInput();
   editDialog.showModal();
 }
@@ -599,6 +657,11 @@ document.getElementById("edit-form").addEventListener("submit", (e) => {
     const n = Number(v);
     if (v === "" || !isFinite(n) || n <= 0) { alert("Type your weight first. 💛"); return; }
     entry.amount = n;
+  }
+  if (entry.category === "water") {
+    const v = document.getElementById("edit-oz").value;
+    const n = Number(v);
+    entry.amount = (v !== "" && isFinite(n) && n > 0) ? n : null;
   }
   entry.timestamp = document.getElementById("edit-time").value;
   entries[i] = entry;

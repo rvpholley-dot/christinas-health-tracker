@@ -110,6 +110,30 @@
   </div>
 </dialog>
 
+<!-- ===== WATER AMOUNT DIALOG (tapping a water bar asks how much) ===== -->
+<dialog id="water-dialog">
+  <form id="water-form" method="dialog">
+    <h2 id="water-title">Water — how much?</h2>
+    <div class="water-presets">
+      <button type="button" class="preset-btn" data-oz="8">8 oz</button>
+      <button type="button" class="preset-btn" data-oz="12">12 oz</button>
+      <button type="button" class="preset-btn" data-oz="16">16 oz</button>
+      <button type="button" class="preset-btn" data-oz="20">20 oz</button>
+      <button type="button" class="preset-btn" data-oz="24">24 oz</button>
+      <button type="button" class="preset-btn" data-oz="32">32 oz</button>
+    </div>
+    <label class="field">Or type the ounces
+      <input id="water-oz" type="number" inputmode="decimal" min="0" step="0.5" placeholder="e.g. 16">
+    </label>
+    <div class="dialog-buttons">
+      <button type="button" id="water-skip" class="secondary-btn">Skip amount</button>
+      <span class="spacer"></span>
+      <button type="button" id="water-cancel" class="secondary-btn">Cancel</button>
+      <button type="submit" class="primary-btn">Log ✓</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- ===== PICKER DIALOG (multi-select for group bars + "Log something else") ===== -->
 <dialog id="picker-dialog">
   <form id="picker-form" method="dialog">
@@ -125,6 +149,10 @@
 
     <label class="field" id="picker-weight-field" hidden>Weight
       <input id="picker-weight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="e.g. 142">
+    </label>
+
+    <label class="field" id="picker-oz-field" hidden>Ounces (optional)
+      <input id="picker-oz" type="number" inputmode="decimal" min="0" step="0.5" placeholder="e.g. 16">
     </label>
 
     <div class="dialog-buttons">
@@ -144,6 +172,10 @@
 
     <label class="field" id="edit-weight-field" hidden>Weight
       <input id="edit-weight" type="number" inputmode="decimal" min="0" step="0.1">
+    </label>
+
+    <label class="field" id="edit-oz-field" hidden>Ounces (optional)
+      <input id="edit-oz" type="number" inputmode="decimal" min="0" step="0.5">
     </label>
 
     <label class="field">Time

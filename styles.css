@@ -198,6 +198,15 @@ dialog h2 { margin: 0 0 14px; }
   margin: 0 0 6px 36px; width: calc(100% - 36px);
 }
 
+/* ---------- v3: water amount dialog ---------- */
+.water-presets { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.preset-btn {
+  min-height: 56px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--card); color: var(--green); font-size: 17px; font-weight: 700;
+  cursor: pointer;
+}
+.preset-btn:active { background: var(--green); color: #fff; }
+
 /* ---------- v3: Log view ---------- */
 .offline-banner {
   background: color-mix(in srgb, #b8860b 14%, var(--card));
