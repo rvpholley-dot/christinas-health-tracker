@@ -4,16 +4,18 @@ Outbound-only: getUpdates long-poll reaches out to Telegram's cloud, nothing
 reaches in. Network blips must never kill the loop — every iteration is
 wrapped in a catch-all with backoff.
 
-Phase 0 behavior: log every incoming chat id (so Brian can copy new ids into
-the allowlist), politely turn away non-allowlisted chats, and tell allowlisted
-chats the agent brain is still being wired up. Phase 2 replaces the allowlisted
-branch with the Claude tool-use agent (agent_llm.handle_message).
+Unknown chat ids are logged (so Brian can copy them into the allowlist) and
+politely turned away. Allowlisted messages go to the Claude agent
+(agent_llm.handle_message); voice memos are transcribed first via
+ElevenLabs Speech-to-Text (scribe_v1 — Telegram's OGG/Opus is supported).
 """
 
 import logging
 import time
 
 import requests
+
+import agent_llm
 
 log = logging.getLogger("cht.telegram")
 
@@ -34,6 +36,35 @@ def send_message(token: str, chat_id, text: str) -> None:
     resp.raise_for_status()
 
 
+def send_typing(token: str, chat_id) -> None:
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/sendChatAction",
+                      json={"chat_id": chat_id, "action": "typing"}, timeout=10)
+    except Exception:
+        pass  # cosmetic only
+
+
+def transcribe_voice(config: dict, file_id: str) -> str:
+    """Download a Telegram voice memo and transcribe it with ElevenLabs."""
+    token = config["telegram_bot_token"]
+    r = requests.get(f"https://api.telegram.org/bot{token}/getFile",
+                     params={"file_id": file_id}, timeout=30)
+    r.raise_for_status()
+    file_path = r.json()["result"]["file_path"]
+    audio = requests.get(f"https://api.telegram.org/file/bot{token}/{file_path}",
+                         timeout=60)
+    audio.raise_for_status()
+    resp = requests.post(
+        "https://api.elevenlabs.io/v1/speech-to-text",
+        headers={"xi-api-key": config["elevenlabs_api_key"]},
+        data={"model_id": "scribe_v1"},
+        files={"file": ("voice.ogg", audio.content, "audio/ogg")},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return (resp.json().get("text") or "").strip()
+
+
 def _handle_update(update: dict, config: dict) -> None:
     message = update.get("message")
     if not message:
@@ -49,11 +80,30 @@ def _handle_update(update: dict, config: dict) -> None:
         send_message(token, chat_id, "Sorry, this is a private bot.")
         return
 
-    log.info("message from allowed chat %s (%s)", chat_id, who)
-    # Phase 2: hand off to agent_llm.handle_message here.
-    send_message(token, chat_id,
-                 "Hi! I'm Christina's health tracker bot. My brain is still "
-                 "being set up — check back soon.")
+    text = message.get("text")
+    if not text and message.get("voice"):
+        send_typing(token, chat_id)
+        try:
+            text = transcribe_voice(config, message["voice"]["file_id"])
+            log.info("voice memo from %s (%s) transcribed: %r", who, chat_id, text[:120])
+        except Exception:
+            log.exception("voice transcription failed for chat %s", chat_id)
+            send_message(token, chat_id,
+                         "Sorry, I couldn't make that one out — try typing it?")
+            return
+    if not text:
+        send_message(token, chat_id,
+                     "I can read texts and voice memos — send me one of those. 💛")
+        return
+
+    log.info("message from %s (%s): %r", who, chat_id, text[:120])
+    send_typing(token, chat_id)
+    try:
+        reply = agent_llm.handle_message(config, chat_id, text)
+    except Exception:
+        log.exception("agent failed for chat %s", chat_id)
+        reply = "Oof, something glitched on my end. Try again in a minute?"
+    send_message(token, chat_id, reply)
 
 
 def run(config: dict, state: dict) -> None:
