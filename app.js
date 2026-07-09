@@ -76,7 +76,7 @@ const PATCH_SPOTS = [
 const DEFAULT_SCHEDULE = [
   { time: "06:30", category: "water", item: "Light water" },
   { time: "06:30", category: "supplements", item: "Cellergize (LifeWave)", note: "stir into 8oz water" },
-  { time: "06:30", category: "supplements", item: "Essiac tea (organic)", note: "2 hrs after meal; drink within 15 min" },
+  { time: "06:30", category: "supplements", item: "Essiac tea (organic)", note: "drink within 15 min" },
   { time: "06:30", category: "patches" },
   { time: "06:30", category: "oils" },
   { time: "08:30", category: "water", item: "Light water" },
@@ -105,7 +105,7 @@ const KEYS = {
   queue: "cht.syncQueue", logCache: "cht.logCache", apiBase: "cht.apiBase",
   apiSecret: "cht.apiSecret", syncSeeded: "cht.syncSeeded", lastSync: "cht.lastSync",
 };
-const APP_DATA_VERSION = 3;
+const APP_DATA_VERSION = 4;
 
 function load(key, fallback) {
   try {
@@ -150,7 +150,9 @@ function seedSchedule() {
    row), so reseed it. Logged entries are NOT touched — History reads old and
    new. v2 → v3: add the 6:30 AM Essiac tea row (Christina's request) to
    schedules seeded before it existed, without disturbing her own edits.
-   A v<2 reseed already includes it via DEFAULT_SCHEDULE. */
+   A v<2 reseed already includes it via DEFAULT_SCHEDULE. v3 → v4: the 6:30
+   row briefly shipped with the 11:30 note; "2 hrs after meal" doesn't fit
+   first thing in the morning, so fix it where that exact note landed. */
 function migrate() {
   const v = load(KEYS.version, 1);
   if (v < 2) {
@@ -166,8 +168,16 @@ function migrate() {
         category: "supplements",
         item: "Essiac tea (organic)",
         group: false,
-        note: "2 hrs after meal; drink within 15 min",
+        note: "drink within 15 min",
       });
+      setSchedule(s);
+    }
+  }
+  if (v === 3) {
+    const s = getSchedule();
+    const row = s.find(r => r.id === "sched3-essiac-0630");
+    if (row && row.note === "2 hrs after meal; drink within 15 min") {
+      row.note = "drink within 15 min";
       setSchedule(s);
     }
   }
