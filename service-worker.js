@@ -1,7 +1,7 @@
 /* Offline support. Caches the app shell so the tracker opens with no signal.
    IMPORTANT: bump CACHE_VERSION whenever you change any app file, so phones
    pick up the new version instead of serving the old cached one. */
-const CACHE_VERSION = "cht-v7";
+const CACHE_VERSION = "cht-v8";
 const SHELL = [
   "./",
   "index.html",

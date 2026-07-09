@@ -2,6 +2,8 @@
 `tailscale serve --https=8446` (tailnet-only, never public).
 
 Endpoints (all JSON):
+  GET  /       — redirect to the app on GitHub Pages (people open this URL
+                 in a browser expecting the tracker; send them there)
   GET  /health — liveness + background-loop heartbeats (no secret needed)
   POST /sync   — push-up sync from the app: upsert entries by id, mirror the
                  schedule, re-render the daily markdown. Idempotent, so the
@@ -22,6 +24,7 @@ from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 import db
 import render_md
@@ -127,6 +130,12 @@ def create_app(config: dict, state: dict) -> FastAPI:
         got = request.headers.get("X-CHT-Secret", "")
         if not hmac.compare_digest(got, config["app_shared_secret"]):
             raise HTTPException(status_code=401, detail="bad secret")
+
+    @app.get("/")
+    def root():
+        return RedirectResponse(
+            "https://rvpholley-dot.github.io/christinas-health-tracker/",
+            status_code=302)
 
     @app.get("/health")
     def health():
