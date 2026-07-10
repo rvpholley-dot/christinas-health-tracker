@@ -7,11 +7,12 @@
    "group" bars that open a multi-select. There is no overdue styling — an
    unchecked circle next to a passed time is the only signal.
 
-   v3: push-only sync to the family computer over Tailscale (this phone's
-   localStorage stays the source of truth), per-patch body locations, and a
-   Log tab that shows the server's view — water totals, patch placements,
-   and entries logged by chatting with the helper bot. Un-checking now keeps
-   a hidden `deleted` tombstone locally so the deletion syncs up too. */
+   v3: sync to the family computer over Tailscale, per-patch body locations,
+   and a Log tab that shows the server's view. v4 makes sync two-way: after
+   each push the app pulls the shared ledger and merges bot-logged entries
+   into local state, matching them to Today bars (nearest unchecked bar of
+   the same category/item). Un-checking keeps a hidden `deleted` tombstone
+   locally so the deletion syncs up too — and bot deletions flow down. */
 
 "use strict";
 
@@ -1070,13 +1071,136 @@ function initSyncSettings() {
   });
   document.getElementById("sync-now-btn").addEventListener("click", () => {
     seedQueueIfNeeded();
-    flushQueue();
+    syncNow();
   });
   updateSyncStatus();
 }
 
 /* ============================================================
-   11c. LOG view (v3) — the server's picture of her week: water
+   11c. PULL (v4) — merge the server's ledger back into local
+   state, so entries logged by chatting with the helper bot
+   check off Today bars like her own taps. Runs after each push
+   (push first: her taps win races). Server wins for bot-owned
+   entries unless the id has un-pushed local edits in the queue;
+   entries she created in the app are never touched.
+   ============================================================ */
+function serverToLocal(se) {
+  const e = {
+    id: se.id,
+    category: se.category,
+    items: Array.isArray(se.items) ? se.items : [],
+    locations: (Array.isArray(se.locations) && se.locations.length) ? se.locations : null,
+    amount: se.amount != null ? se.amount : null,
+    timestamp: se.timestamp,
+    scheduleId: se.scheduleId || null,
+    notes: se.notes || null,
+    source: se.source || "app",
+  };
+  if (se.deleted) e.deleted = true;
+  return e;
+}
+
+function sameEntry(a, b) {
+  return a.category === b.category &&
+    JSON.stringify(a.items || []) === JSON.stringify(b.items || []) &&
+    JSON.stringify(a.locations || null) === JSON.stringify(b.locations || null) &&
+    (a.amount != null ? a.amount : null) === (b.amount != null ? b.amount : null) &&
+    a.timestamp === b.timestamp &&
+    (a.scheduleId || null) === (b.scheduleId || null) &&
+    (a.notes || null) === (b.notes || null) &&
+    !a.deleted === !b.deleted;
+}
+
+function mergeServerEntries(serverEntries) {
+  const entries = getEntries();
+  const byId = new Map(entries.map(e => [e.id, e]));
+  const queued = new Set(getQueue());
+  let changed = false;
+
+  serverEntries.forEach(se => {
+    if (!se || !se.id || !se.timestamp) return;
+    const local = byId.get(se.id);
+    if (!local) {
+      const e = serverToLocal(se);
+      entries.push(e);
+      byId.set(e.id, e);
+      changed = true;
+    } else if ((local.source || "app") !== "app" && !queued.has(se.id)) {
+      const e = serverToLocal(se);
+      if (!sameEntry(e, local)) {
+        delete local.deleted;          // clear a stale tombstone before assign
+        Object.assign(local, e);
+        changed = true;
+      }
+    }
+    // local.source === "app": the phone is authoritative — never touched
+  });
+
+  if (assignScheduleIds(entries)) changed = true;
+  if (changed) setEntries(entries);
+  return changed;
+}
+
+/* Match entries that have no scheduleId (bot entries, ad hoc logs) to the
+   nearest not-yet-checked bar of the same category/item, per calendar day.
+   The assignment is queued so the server ledger learns it too. */
+function assignScheduleIds(entries) {
+  const schedule = getSchedule();
+  let changed = false;
+  const usedByDay = new Map();   // "YYYY-MM-DD" -> Set(scheduleId)
+  entries.forEach(e => {
+    if (e.deleted || !e.scheduleId || !e.timestamp) return;
+    const day = e.timestamp.slice(0, 10);
+    if (!usedByDay.has(day)) usedByDay.set(day, new Set());
+    usedByDay.get(day).add(e.scheduleId);
+  });
+
+  entries
+    .filter(e => !e.deleted && !e.scheduleId && e.timestamp && e.category)
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    .forEach(e => {
+      const day = e.timestamp.slice(0, 10);
+      if (!usedByDay.has(day)) usedByDay.set(day, new Set());
+      const used = usedByDay.get(day);
+      const entryMin = timeToMinutes(e.timestamp.slice(11, 16));
+      const eItems = entryItems(e);
+      const candidates = schedule.filter(s =>
+        s.category === e.category &&
+        !used.has(s.id) &&
+        (s.group || (s.item && eItems.includes(s.item))));
+      if (!candidates.length) return;   // stays ad hoc — that's fine
+      candidates.sort((a, b) =>
+        Math.abs(timeToMinutes(a.time) - entryMin) -
+        Math.abs(timeToMinutes(b.time) - entryMin));
+      e.scheduleId = candidates[0].id;
+      used.add(candidates[0].id);
+      enqueueSync([e.id]);
+      changed = true;
+    });
+  return changed;
+}
+
+let pulling = false;
+async function pullFromServer() {
+  if (pulling || !syncEnabled()) return;
+  pulling = true;
+  try {
+    const res = await fetch(getApiBase() + "/log?days=7&include_deleted=1",
+      { headers: { "X-CHT-Secret": getApiSecret() } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (mergeServerEntries(data.entries || [])) refreshCurrentView();
+  } catch (err) {
+    console.warn("Pull failed (will retry on next open):", err);
+  } finally {
+    pulling = false;
+  }
+}
+
+function syncNow() { flushQueue().then(pullFromServer); }
+
+/* ============================================================
+   11d. LOG view (v3) — the server's picture of her week: water
    totals, current patch spots, and every entry (including ones
    logged by chatting with the helper bot). Falls back to the
    last saved copy with a banner when the tailnet is off.
@@ -1286,13 +1410,14 @@ if ("serviceWorker" in navigator) {
 
 // Sync kicks off on load and whenever the app comes back to the foreground
 // or the network returns; each save also triggers a flush via enqueueSync.
-window.addEventListener("online", flushQueue);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) flushQueue(); });
+// Push first, then pull the bot's entries down (v4 two-way).
+window.addEventListener("online", syncNow);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncNow(); });
 
 // Migrate v1 data (one-time schedule reseed), then start on Today
 migrate();
 initSyncSettings();
 seedQueueIfNeeded();
-flushQueue();
+syncNow();
 show("today");
 maybeShowWelcome();
