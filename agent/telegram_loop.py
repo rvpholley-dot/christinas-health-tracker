@@ -10,8 +10,11 @@ politely turned away. Allowlisted messages go to the Claude agent
 ElevenLabs Speech-to-Text (scribe_v1 — Telegram's OGG/Opus is supported).
 """
 
+import base64
 import logging
+import os
 import time
+from datetime import datetime
 
 import requests
 
@@ -21,6 +24,8 @@ log = logging.getLogger("cht.telegram")
 
 POLL_TIMEOUT = 50
 ERROR_BACKOFF_SECONDS = 10
+DEFAULT_INBOX = r"D:\Christina\cht-agent\inbox"
+MAX_IMAGE_BYTES = 4_000_000      # keep well under the API's 5 MB image cap
 
 
 def _beat(state):
@@ -63,6 +68,39 @@ def transcribe_voice(config: dict, file_id: str) -> str:
     )
     resp.raise_for_status()
     return (resp.json().get("text") or "").strip()
+
+
+def download_telegram_file(token: str, file_id: str) -> tuple[bytes, str]:
+    """Fetch a file from Telegram; returns (bytes, extension incl. dot).
+    Telegram's getFile refuses files over 20 MB — that surfaces as an
+    HTTP error the caller handles."""
+    r = requests.get(f"https://api.telegram.org/bot{token}/getFile",
+                     params={"file_id": file_id}, timeout=30)
+    r.raise_for_status()
+    file_path = r.json()["result"]["file_path"]
+    ext = os.path.splitext(file_path)[1]
+    resp = requests.get(f"https://api.telegram.org/file/bot{token}/{file_path}",
+                        timeout=120)
+    resp.raise_for_status()
+    return resp.content, ext
+
+
+def save_inbox_file(config: dict, data: bytes, ext: str, kind: str) -> str:
+    """Save bytes to <inbox_dir>\\YYYY-MM-DD\\HHMMSS-<kind><ext>; never
+    overwrites (suffix on collision). Returns the full path."""
+    day_dir = os.path.join(config.get("inbox_dir", DEFAULT_INBOX),
+                           datetime.now().strftime("%Y-%m-%d"))
+    os.makedirs(day_dir, exist_ok=True)
+    base = f"{datetime.now().strftime('%H%M%S')}-{kind}"
+    ext = ext or ".bin"
+    path = os.path.join(day_dir, base + ext)
+    n = 1
+    while os.path.exists(path):
+        path = os.path.join(day_dir, f"{base}-{n}{ext}")
+        n += 1
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
 
 
 def _handle_update(update: dict, config: dict) -> None:
