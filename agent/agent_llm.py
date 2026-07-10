@@ -430,7 +430,9 @@ def _merge_alternating(msgs):
     """The API needs strictly alternating roles starting with 'user'."""
     out = []
     for m in msgs:
-        if out and out[-1]["role"] == m["role"] and isinstance(out[-1]["content"], str):
+        if (out and out[-1]["role"] == m["role"]
+                and isinstance(out[-1]["content"], str)
+                and isinstance(m["content"], str)):
             out[-1]["content"] += "\n" + m["content"]
         else:
             out.append(dict(m))
