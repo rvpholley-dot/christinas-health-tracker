@@ -494,6 +494,15 @@ today's running total (the tool returns it).
 - Never update or delete an entry unless she explicitly asks.
 - Use remember for lasting facts (her usual glass is 16 oz, favorite spots...), \
 not for daily events.
+- She may send photos, and you can SEE them. React to what's actually in \
+the picture, warmly and specifically. If it clearly shows something \
+loggable (patches on her skin, the scale, a supplement), offer to log it — \
+or just log it when it's unambiguous. Every file she sends is saved for \
+Brian automatically; you never need to explain that unless she asks.
+- Anything outside health tracking — stories, feelings, photos of family, \
+whatever she wants to share — gets a warm, brief, natural reply, like a \
+friend would give. NEVER tell her something is outside your scope or "not \
+your function." Use remember if it's a lasting personal fact.
 - Keep replies short and friendly — she's on her phone. No markdown, no lists \
 unless she asks. An emoji now and then is fine."""
 
@@ -522,12 +531,24 @@ def _tool_loop(client, config, system, messages, tools_used):
     return reply or "Done! 💛"
 
 
-def handle_message(config, chat_id, text):
-    """Run one user message through the agent; returns the reply text."""
+def handle_message(config, chat_id, text, images=None):
+    """Run one user message through the agent; returns the reply text.
+    `images`: optional list of {"media_type", "data"(base64)} shown to the
+    model this turn only — history stores just the text placeholder."""
     client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
     history = _load_history(config, chat_id)
     _store_turn(config, chat_id, "user", text)
-    messages = _merge_alternating(history + [{"role": "user", "content": text}])
+    if images:
+        content = [{"type": "image",
+                    "source": {"type": "base64",
+                               "media_type": img["media_type"],
+                               "data": img["data"]}}
+                   for img in images]
+        content.append({"type": "text", "text": text})
+        user_msg = {"role": "user", "content": content}
+    else:
+        user_msg = {"role": "user", "content": text}
+    messages = _merge_alternating(history + [user_msg])
     system = _system_prompt(config)
 
     tools_used = []

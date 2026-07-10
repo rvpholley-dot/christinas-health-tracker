@@ -119,6 +119,49 @@ def _handle_update(update: dict, config: dict) -> None:
         return
 
     text = message.get("text")
+    images = None
+    caption = (message.get("caption") or "").strip()
+
+    if not text and message.get("photo"):
+        send_typing(token, chat_id)
+        try:
+            sizes = [p for p in message["photo"]
+                     if (p.get("file_size") or 0) <= MAX_IMAGE_BYTES]
+            best = (sizes or message["photo"][:1])[-1]  # sizes run small→large
+            data, ext = download_telegram_file(token, best["file_id"])
+            path = save_inbox_file(config, data, ext or ".jpg", "photo")
+            log.info("photo from %s (%s) saved to %s", who, chat_id, path)
+            images = [{"media_type": "image/jpeg",
+                       "data": base64.b64encode(data).decode()}]
+            text = f"(she sent a photo — saved to {path})"
+            if caption:
+                text += f" {caption}"
+        except Exception:
+            log.exception("photo handling failed for chat %s", chat_id)
+            send_message(token, chat_id,
+                         "I had trouble opening that photo — mind sending it again? 💛")
+            return
+
+    if not text and not images:
+        for kind in ("video", "video_note", "animation", "document", "audio", "sticker"):
+            media = message.get(kind)
+            if not media:
+                continue
+            send_typing(token, chat_id)
+            try:
+                data, ext = download_telegram_file(token, media["file_id"])
+                path = save_inbox_file(config, data, ext, kind)
+                log.info("%s from %s (%s) saved to %s", kind, who, chat_id, path)
+                text = (f"(she sent a {kind} — you can't watch/open it, but it's "
+                        f"saved at {path} for Brian; respond warmly)")
+            except Exception:
+                log.exception("%s handling failed for chat %s", kind, chat_id)
+                text = (f"(she sent a {kind} that couldn't be saved — too big or "
+                        "a network hiccup; respond warmly, don't be technical)")
+            if caption:
+                text += f" {caption}"
+            break
+
     if not text and message.get("voice"):
         send_typing(token, chat_id)
         try:
@@ -131,13 +174,14 @@ def _handle_update(update: dict, config: dict) -> None:
             return
     if not text:
         send_message(token, chat_id,
-                     "I can read texts and voice memos — send me one of those. 💛")
+                     "I couldn't quite open that one — but send me texts, voice "
+                     "memos, or photos anytime! 💛")
         return
 
     log.info("message from %s (%s): %r", who, chat_id, text[:120])
     send_typing(token, chat_id)
     try:
-        reply = agent_llm.handle_message(config, chat_id, text)
+        reply = agent_llm.handle_message(config, chat_id, text, images=images)
     except Exception:
         log.exception("agent failed for chat %s", chat_id)
         reply = "Oof, something glitched on my end. Try again in a minute?"
