@@ -114,6 +114,7 @@ def _entry_out(row):
         "scheduleId": row["schedule_id"],
         "notes": row["notes"],
         "source": row["source"],
+        "deleted": bool(row["deleted"]),
     }
 
 
@@ -228,7 +229,7 @@ def create_app(config: dict, state: dict) -> FastAPI:
         return {"ok": True, "inserted": inserted}
 
     @app.get("/log")
-    def get_log(request: Request, days: int = 7):
+    def get_log(request: Request, days: int = 7, include_deleted: int = 0):
         require_secret(request)
         days = max(1, min(days, 90))
         today = datetime.now().strftime("%Y-%m-%d")
@@ -236,8 +237,10 @@ def create_app(config: dict, state: dict) -> FastAPI:
 
         conn = db.connect(config["db_path"])
         try:
+            # tombstones ride along only when the app asks for them (pull
+            # sync); totals always come from live rows only
             rows = conn.execute(
-                "SELECT * FROM entries WHERE deleted=0 AND timestamp >= ? "
+                "SELECT * FROM entries WHERE timestamp >= ? "
                 "ORDER BY timestamp DESC, created_at DESC", (start,)).fetchall()
             weight = conn.execute(
                 "SELECT amount, timestamp FROM entries WHERE deleted=0 AND "
@@ -250,9 +253,11 @@ def create_app(config: dict, state: dict) -> FastAPI:
         finally:
             conn.close()
 
+        live = [r for r in rows if not r["deleted"]]
+
         water_by_day = {}
         water_today_count = 0
-        for r in rows:
+        for r in live:
             if r["category"] != "water":
                 continue
             day = r["timestamp"][:10]
@@ -273,7 +278,7 @@ def create_app(config: dict, state: dict) -> FastAPI:
 
         return {
             "ok": True,
-            "entries": [_entry_out(r) for r in rows],
+            "entries": [_entry_out(r) for r in (rows if include_deleted else live)],
             "totals": {
                 "waterTodayOz": water_by_day.get(today, 0),
                 "waterTodayCount": water_today_count,
