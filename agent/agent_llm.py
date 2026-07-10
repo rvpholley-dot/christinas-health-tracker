@@ -26,6 +26,21 @@ MAX_TOOL_ROUNDS = 8
 HISTORY_TURNS = 20
 TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
 
+# A reply that claims a ledger action happened. Checked against turns where
+# no tool ran at all — the model has repeatedly said "logged!" without
+# calling log_entry (silently losing Christina's data), and the text-only
+# conversation history teaches it to keep doing so once it starts.
+ACTION_CLAIM_RE = re.compile(
+    r"\b(logged|logging|updated|deleted|saved|recorded|done)\b", re.I)
+
+GUARD_PROMPT = (
+    "(automatic system check — this is not from Christina: your last reply "
+    "claims something was logged/updated/deleted, but you called NO tools "
+    "this turn, so nothing was actually saved. Use get_log to see what is "
+    "really in the ledger, call log_entry for anything Christina reported "
+    "that is missing, then send her one short corrected confirmation.)"
+)
+
 CATEGORIES = ("water", "supplements", "patches", "oils", "lotion", "weight")
 
 # Mirrored from the app's CATALOG — patch names especially must match exactly.
@@ -153,6 +168,25 @@ def _now():
     return datetime.now().strftime("%Y-%m-%dT%H:%M")
 
 
+def _ts_error(ts: str) -> str | None:
+    """Validate a tool-supplied timestamp; returns an error string or None.
+
+    Rejects the future: the model has stamped entries with tomorrow's date
+    when backfilling "this morning", which corrupts day totals and schedule
+    matching. 10-minute grace covers clock skew and "just now" rounding.
+    """
+    if not TS_RE.match(ts):
+        return "timestamp must be YYYY-MM-DDTHH:MM"
+    try:
+        ts_dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return "timestamp must be a real YYYY-MM-DDTHH:MM time"
+    if ts_dt > datetime.now() + timedelta(minutes=10):
+        return (f"timestamp {ts} is in the future — right now it is {_now()}; "
+                "anything from earlier today gets today's date")
+    return None
+
+
 def _water_total(conn, date):
     row = conn.execute(
         "SELECT COALESCE(SUM(amount),0) FROM entries WHERE deleted=0 AND "
@@ -188,8 +222,9 @@ def _t_log_entry(config, a):
     if cat not in CATEGORIES:
         return {"error": f"unknown category {cat!r}"}
     ts = (a.get("timestamp") or _now())[:16]
-    if not TS_RE.match(ts):
-        return {"error": "timestamp must be YYYY-MM-DDTHH:MM"}
+    err = _ts_error(ts)
+    if err:
+        return {"error": err}
     items = a.get("items") or []
     locations = a.get("locations") or None
     amount = a.get("amount")
@@ -271,8 +306,9 @@ def _t_update_entry(config, a):
             sets.append("amount=?"); params.append(float(a["amount"]))
         if "timestamp" in a and a["timestamp"]:
             ts = a["timestamp"][:16]
-            if not TS_RE.match(ts):
-                return {"error": "timestamp must be YYYY-MM-DDTHH:MM"}
+            err = _ts_error(ts)
+            if err:
+                return {"error": err}
             sets.append("timestamp=?"); params.append(ts)
         if "notes" in a and a["notes"] is not None:
             sets.append("notes=?"); params.append(a["notes"])
@@ -421,7 +457,14 @@ def _system_prompt(config):
 She texts (or voice-memos) what she did and you keep her ledger.
 
 Right now it is {when} in Brighton, Colorado (America/Denver). \
-All timestamps are local naive YYYY-MM-DDTHH:MM.
+Today's date is {now.strftime('%Y-%m-%d')}. All timestamps are local naive \
+YYYY-MM-DDTHH:MM. Never use a future date: when she backfills something from \
+earlier today, the date is {now.strftime('%Y-%m-%d')}.
+
+Everything you log with log_entry lands in the same ledger her phone app \
+reads — the app's Log tab shows your entries next time she opens it. There \
+is no separate sync step and nothing Brian has to do. (Only the Today \
+screen's checkmarks are phone-local; those she taps herself.)
 
 What you know about Christina:
 {profile}
@@ -434,6 +477,10 @@ Weight is logged with amount in pounds and no items.
 Common patch spots: {PATCH_SPOTS}.
 
 Rules:
+- CRITICAL: an entry exists ONLY if you called log_entry this turn and its \
+result came back ok. NEVER tell her something is "logged" unless that \
+happened in this very turn — saying "logged!" without the tool call loses \
+her data. If you're unsure whether something was logged, check with get_log.
 - Log what she tells you with log_entry. Water amounts are ounces — if she \
 gives a container ("a bottle") without ounces, ask or use what you know about her.
 - When she logs patches, record where each one went (locations). If she \
@@ -449,14 +496,8 @@ not for daily events.
 unless she asks. An emoji now and then is fine."""
 
 
-def handle_message(config, chat_id, text):
-    """Run one user message through the agent; returns the reply text."""
-    client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
-    history = _load_history(config, chat_id)
-    _store_turn(config, chat_id, "user", text)
-    messages = _merge_alternating(history + [{"role": "user", "content": text}])
-    system = _system_prompt(config)
-
+def _tool_loop(client, config, system, messages, tools_used):
+    """Run tool rounds until the model stops; returns the final reply text."""
     response = None
     for _ in range(MAX_TOOL_ROUNDS):
         response = client.messages.create(
@@ -470,12 +511,36 @@ def handle_message(config, chat_id, text):
             if block.type == "tool_use":
                 log.info("tool %s %s", block.name, json.dumps(block.input)[:200])
                 out = _run_tool(config, block.name, block.input)
+                tools_used.append(block.name)
                 results.append({"type": "tool_result", "tool_use_id": block.id,
                                 "content": json.dumps(out)})
         messages.append({"role": "user", "content": results})
 
     reply = "".join(b.text for b in response.content if b.type == "text").strip()
-    if not reply:
-        reply = "Done! 💛"
+    return reply or "Done! 💛"
+
+
+def handle_message(config, chat_id, text):
+    """Run one user message through the agent; returns the reply text."""
+    client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    history = _load_history(config, chat_id)
+    _store_turn(config, chat_id, "user", text)
+    messages = _merge_alternating(history + [{"role": "user", "content": text}])
+    system = _system_prompt(config)
+
+    tools_used = []
+    reply = _tool_loop(client, config, system, messages, tools_used)
+
+    # Grounding guard: a reply that claims a ledger action in a turn where
+    # NO tool ran is a hallucinated confirmation (this silently lost entries
+    # on 2026-07-08/09). One corrective round: verify with get_log, log what
+    # is missing, restate.
+    if not tools_used and ACTION_CLAIM_RE.search(reply):
+        log.warning("guard: reply claims action but no tool ran — "
+                    "forcing a verification round (%r)", reply[:120])
+        messages.append({"role": "assistant", "content": reply})
+        messages.append({"role": "user", "content": GUARD_PROMPT})
+        reply = _tool_loop(client, config, system, messages, tools_used)
+
     _store_turn(config, chat_id, "assistant", reply)
     return reply
